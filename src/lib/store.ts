@@ -8,7 +8,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cdiRate: 14.9,
   ipcaRate: 4.5,
   selicRate: 15,
-  theme: 'system',
+  theme: 'dark',
   hideValues: false,
 };
 

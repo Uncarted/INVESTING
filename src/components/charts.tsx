@@ -51,15 +51,15 @@ export function Allocation({ slices, onSelect }: { slices: Slice[]; onSelect?: (
 }
 
 /** Single-series area chart with crosshair tooltip. */
-export function AreaChart({ data, height = 220 }: { data: { month: string; value: number }[]; height?: number }) {
+export function AreaChart({ data, height = 220, compact }: { data: { month: string; value: number }[]; height?: number; compact?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
   const W = 640;
   const H = height;
-  const pad = { l: 56, r: 12, t: 12, b: 26 };
+  const pad = compact ? { l: 6, r: 6, t: 10, b: 22 } : { l: 56, r: 12, t: 12, b: 26 };
   const { ticks, x, y, path, area } = useMemo(() => {
     const max = Math.max(1, ...data.map((d) => d.value));
-    const step = niceStep(max / 4);
+    const step = niceStep(max / (compact ? 2 : 4));
     const top = Math.ceil(max / step) * step;
     const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
     const x = (i: number) => pad.l + (data.length <= 1 ? 0.5 : i / (data.length - 1)) * (W - pad.l - pad.r);
@@ -72,7 +72,7 @@ export function AreaChart({ data, height = 220 }: { data: { month: string; value
 
   if (data.length < 2) return <div className="muted small" style={{ padding: 24 }}>Adicione lançamentos para ver a evolução.</div>;
 
-  const labelEvery = Math.max(1, Math.ceil(data.length / 8));
+  const labelEvery = Math.max(1, Math.ceil(data.length / (compact ? 5 : 8)));
   const onMove = (e: React.MouseEvent) => {
     const rect = ref.current!.getBoundingClientRect();
     const px = ((e.clientX - rect.left) / rect.width) * W;
@@ -81,31 +81,31 @@ export function AreaChart({ data, height = 220 }: { data: { month: string; value
   };
   const h = hover !== null ? data[hover] : null;
   return (
-    <div className="chart" ref={ref} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+    <div className={'chart' + (compact ? ' compact' : '')} ref={ref} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Evolução do valor aplicado">
         <defs>
           <linearGradient id="areaFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
-            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="var(--line)" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="var(--line)" stopOpacity="0" />
           </linearGradient>
         </defs>
         {ticks.map((t) => (
           <g key={t}>
-            <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} stroke={t === 0 ? 'var(--axis)' : 'var(--grid)'} strokeWidth={1} />
-            <text className="tick" x={pad.l - 8} y={y(t) + 4} textAnchor="end">{moneyCompact(t)}</text>
+            <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} stroke={t === 0 ? 'var(--axis)' : 'var(--grid)'} strokeWidth={1} strokeDasharray={t === 0 ? undefined : '2 4'} />
+            {compact ? t > 0 && <text className="tick" x={pad.l} y={y(t) - 5}>{moneyCompact(t)}</text> : <text className="tick" x={pad.l - 8} y={y(t) + 4} textAnchor="end">{moneyCompact(t)}</text>}
           </g>
         ))}
         {data.map((d, i) =>
           (i % labelEvery === 0 && data.length - 1 - i >= labelEvery / 2) || i === data.length - 1 ? (
-            <text key={d.month} className="tick" x={x(i)} y={H - 6} textAnchor="middle">{fmtMonth(d.month)}</text>
+            <text key={d.month} className="tick" x={x(i)} y={H - 6} textAnchor={i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle'}>{fmtMonth(d.month)}</text>
           ) : null,
         )}
         <path d={area} fill="url(#areaFill)" />
-        <path d={path} fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinejoin="round" />
+        <path d={path} fill="none" stroke="var(--line)" strokeWidth={2} strokeLinejoin="round" />
         {h && hover !== null && (
           <g>
             <line x1={x(hover)} x2={x(hover)} y1={pad.t} y2={y(0)} stroke="var(--axis)" strokeDasharray="3 3" />
-            <circle cx={x(hover)} cy={y(h.value)} r={5} fill="var(--accent)" stroke="var(--surface)" strokeWidth={2} />
+            <circle cx={x(hover)} cy={y(h.value)} r={5} fill="var(--line)" stroke="var(--surface)" strokeWidth={2} />
           </g>
         )}
       </svg>

@@ -21,8 +21,10 @@ npm run release   # rebuilds Carteira.html
 
 ## Features
 
-- **Visão geral**: total portfolio value, amount invested, result, dividends from the last 12 months, allocation by asset class and by bank/broker, and how much you've invested over time.
-- **Carteira**: every position grouped by class, with quantity, preço médio, cost, current value, result and % of the portfolio. Click an asset to see its history, edit it, update its price or enter the bank balance.
+The main screen shows what matters at a glance: total value, gain/loss, dividends, tax due, where your money is, and every holding. Everything else sits behind the menu (☰) and opens as a panel.
+
+
+- **Home**: total value, result, amount invested over time, dividends (12 months), the next DARF due, profit from sales this year, an allocation bar (click a class to filter), and the holdings list. Click an asset to see its history, edit it, update its price or enter the bank balance.
 - **Novo lançamento** (press `N` from anywhere): buys and sells, fixed-income deposits and redemptions, dividends/JCP/income, splits, reverse splits and bonus shares. The asset class is detected from the ticker. "Salvar e adicionar outro" lets you enter several in a row.
 - **Imposto de Renda** for any year:
   - *Bens e Direitos*: group/code, a ready-to-copy description, and the position on 31/12 of the previous and current year (at cost).

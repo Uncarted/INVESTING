@@ -196,9 +196,18 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
     >
       <form className="stack" onSubmit={(e) => { e.preventDefault(); save(false); }}>
         {!editing && (
-          <div className="seg" role="tablist">
-            {([['market', 'Renda variável'], ['fixed', 'Renda fixa / fundos'], ['income', 'Provento'], ['event', 'Desdobro / bonificação']] as [Mode, string][]).map(([m, l]) => (
-              <button type="button" key={m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>{l}</button>
+          <div className="type-grid" role="tablist">
+            {([
+              ['market', 'Bolsa', 'Ações, FIIs, ETFs, cripto', 'chart'],
+              ['fixed', 'Renda fixa', 'CDB, LCI, Tesouro, fundos', 'wallet'],
+              ['income', 'Provento', 'Dividendo, JCP, rendimento', 'coins'],
+              ['event', 'Evento', 'Desdobro, bonificação', 'refresh'],
+            ] as [Mode, string, string, string][]).map(([m, l, d, ic]) => (
+              <button type="button" key={m} className={'type-card' + (mode === m ? ' on' : '')} onClick={() => setMode(m)}>
+                <Icon name={ic} size={18} />
+                <b>{l}</b>
+                <span>{d}</span>
+              </button>
             ))}
           </div>
         )}
@@ -419,9 +428,10 @@ function AssetCombo({
         placeholder={placeholder}
         autoFocus={autoFocus}
         onChange={(e) => { onChange(e.target.value); setOpen(true); setActive(0); }}
-        onFocus={() => setOpen(true)}
+        onFocus={() => value && setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 120)}
         onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' && !open) { setOpen(true); return; }
           if (!show) return;
           if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, suggestions.length - 1)); }
           if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
