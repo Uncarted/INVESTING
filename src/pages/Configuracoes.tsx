@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { actions, useData } from '../lib/store';
 import { fetchRates } from '../lib/quotes';
+import { checkKey, cleanKey } from '../lib/keys';
+import { cloudEnabled } from '../lib/cloud';
 import { useLive, type FeedStatus } from '../lib/live';
 import { fmtDate, money, parseNumber } from '../lib/format';
 import { toast } from '../components/ui';
@@ -11,6 +13,7 @@ import { sampleData } from '../lib/sample';
 export function Configuracoes() {
   const data = useData();
   const live = useLive();
+  const cloud = cloudEnabled;
   const s = data.settings;
   const [loading, setLoading] = useState(false);
 
@@ -78,45 +81,28 @@ export function Configuracoes() {
           <Feed name="Cripto" detail="Binance · tempo real, sem cadastro" status={live.status.crypto} />
           <Feed name="Dólar e euro" detail={`AwesomeAPI · US$ 1 = ${money(s.fx.USD, { always: true })} · € 1 = ${money(s.fx.EUR, { always: true })}`} status={live.status.fx} />
         </div>
-        <label className="field">
-          <span>Chave da Finnhub (ações americanas: AMD, TTWO, AAPL…)</span>
-          <input
-            className="input"
-            type="password"
-            defaultValue={s.finnhubToken ?? ''}
-            placeholder="cole aqui sua chave gratuita"
-            onBlur={(e) => actions.updateSettings({ finnhubToken: e.target.value.trim() || undefined })}
-          />
-          <span className="hint">
-            Grátis em <a href="https://finnhub.io/register" target="_blank" rel="noreferrer">finnhub.io/register</a> (1 minuto). Libera preço em tempo real e a busca por qualquer ação americana pelo nome.
-          </span>
-        </label>
-        <label className="field">
-          <span>Chave da Twelve Data (preço de datas passadas — ações dos EUA)</span>
-          <input
-            className="input"
-            type="password"
-            defaultValue={s.twelveDataToken ?? ''}
-            placeholder="opcional — cole aqui sua chave gratuita"
-            onBlur={(e) => actions.updateSettings({ twelveDataToken: e.target.value.trim() || undefined })}
-          />
-          <span className="hint">
-            Grátis em <a href="https://twelvedata.com/register" target="_blank" rel="noreferrer">twelvedata.com</a>. Preenche sozinho o preço de uma compra antiga de AMD, TTWO etc. quando você escolhe a data.
-          </span>
-        </label>
-        <label className="field">
-          <span>Token da brapi (B3)</span>
-          <input
-            className="input"
-            type="password"
-            defaultValue={s.brapiToken ?? ''}
-            placeholder="cole aqui seu token gratuito"
-            onBlur={(e) => actions.updateSettings({ brapiToken: e.target.value.trim() || undefined })}
-          />
-          <span className="hint">
-            Grátis em <a href="https://brapi.dev/dashboard" target="_blank" rel="noreferrer">brapi.dev</a>. As chaves ficam salvas só neste navegador.
-          </span>
-        </label>
+        <KeyField
+          label="Finnhub — ações dos EUA ao vivo (AMD, TTWO, AAPL…)"
+          kind="finnhub"
+          value={s.finnhubToken}
+          onSave={(v) => actions.updateSettings({ finnhubToken: v })}
+          help={<>Grátis em <a href="https://finnhub.io/register" target="_blank" rel="noreferrer">finnhub.io/register</a> → depois de entrar, a chave aparece em “API Key” no painel.</>}
+        />
+        <KeyField
+          label="brapi — ações, FIIs e ETFs da B3"
+          kind="brapi"
+          value={s.brapiToken}
+          onSave={(v) => actions.updateSettings({ brapiToken: v })}
+          help={<>Grátis em <a href="https://brapi.dev/dashboard" target="_blank" rel="noreferrer">brapi.dev/dashboard</a> → copie o token do painel.</>}
+        />
+        <KeyField
+          label="Twelve Data — preço de datas passadas (EUA) · opcional"
+          kind="twelve"
+          value={s.twelveDataToken}
+          onSave={(v) => actions.updateSettings({ twelveDataToken: v })}
+          help={<>Grátis em <a href="https://twelvedata.com/register" target="_blank" rel="noreferrer">twelvedata.com/register</a> → menu “API Keys”.</>}
+        />
+        <p className="muted small" style={{ margin: 0 }}>{cloud ? 'As chaves ficam salvas na sua conta — valem em qualquer computador.' : 'As chaves ficam salvas neste navegador.'}</p>
       </div>
 
       <div className="card card-pad stack">
@@ -164,6 +150,7 @@ export function Configuracoes() {
 
 const STATUS: Record<FeedStatus, [string, string]> = {
   off: ['Desligado', 'var(--muted)'],
+  ready: ['Pronto', 'var(--pos)'],
   connecting: ['Conectando…', 'var(--warn-ink)'],
   live: ['Ao vivo', 'var(--pos)'],
   polling: ['Atualizando', 'var(--pos)'],
@@ -173,6 +160,7 @@ const STATUS: Record<FeedStatus, [string, string]> = {
 
 function Feed({ name, detail, status }: { name: string; detail: string; status: FeedStatus }) {
   const [label, color] = STATUS[status];
+  if (status === 'ready') detail += ' · liga sozinho quando você tiver ativos desse mercado';
   return (
     <div className="feed">
       <span className={'feed-dot' + (status === 'live' ? ' live' : '')} style={{ background: color }} />
@@ -181,6 +169,57 @@ function Feed({ name, detail, status }: { name: string; detail: string; status: 
         <small>{detail}</small>
       </span>
       <span className="small" style={{ color }}>{label}</span>
+    </div>
+  );
+}
+
+function KeyField({
+  label, kind, value, onSave, help,
+}: { label: string; kind: 'finnhub' | 'brapi' | 'twelve'; value?: string; onSave: (v: string | undefined) => void; help: React.ReactNode }) {
+  const [draft, setDraft] = useState('');
+  const [editing, setEditing] = useState(!value);
+  const [state, setState] = useState<{ status: 'idle' | 'testing' | 'ok' | 'bad'; detail?: string }>({ status: 'idle' });
+
+  async function save() {
+    const key = cleanKey(draft);
+    if (!key) return setState({ status: 'bad', detail: 'Cole a chave primeiro.' });
+    onSave(key);
+    setEditing(false);
+    setDraft('');
+    setState({ status: 'testing' });
+    const r = await checkKey(kind, key);
+    setState({ status: r.ok ? 'ok' : 'bad', detail: r.detail });
+    toast(r.ok ? 'Chave salva e funcionando' : 'Chave salva — mas o teste falhou');
+  }
+  async function test() {
+    if (!value) return;
+    setState({ status: 'testing' });
+    const r = await checkKey(kind, value);
+    setState({ status: r.ok ? 'ok' : 'bad', detail: r.detail });
+  }
+
+  return (
+    <div className="field keyfield">
+      <span>{label}</span>
+      {editing ? (
+        <form className="row" onSubmit={(e) => { e.preventDefault(); save(); }}>
+          <input className="input" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="cole aqui a chave" autoComplete="off" spellCheck={false} />
+          <button className="btn primary" type="submit">Salvar</button>
+          {value && <button className="btn ghost" type="button" onClick={() => { setEditing(false); setDraft(''); }}>Cancelar</button>}
+        </form>
+      ) : (
+        <div className="row key-saved">
+          <span className="key-mask"><Icon name="check" size={14} /> Chave salva · ••••{value?.slice(-4)}</span>
+          <div className="spacer" />
+          <button className="btn sm" onClick={test} disabled={state.status === 'testing'}>{state.status === 'testing' ? 'Testando…' : 'Testar'}</button>
+          <button className="btn sm ghost" onClick={() => { setEditing(true); setState({ status: 'idle' }); }}>Trocar</button>
+          <button className="btn sm ghost danger" onClick={() => { onSave(undefined); setEditing(true); setState({ status: 'idle' }); }}>Remover</button>
+        </div>
+      )}
+      {state.status === 'testing' && <span className="hint">Testando a chave…</span>}
+      {state.status === 'ok' && <span className="hint" style={{ color: 'var(--pos)' }}>✓ {state.detail}</span>}
+      {state.status === 'bad' && <span className="hint" style={{ color: 'var(--neg)' }}>✗ {state.detail}</span>}
+      <span className="hint">{help}</span>
     </div>
   );
 }

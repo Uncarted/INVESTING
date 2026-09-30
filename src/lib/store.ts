@@ -2,7 +2,9 @@ import { useSyncExternalStore } from 'react';
 import type { Asset, Data, Settings, Transaction } from './types';
 import { uid } from './format';
 
-const KEY = 'carteira:v1';
+/** Local storage key; each logged-in user gets their own (see switchStorage). */
+export const LOCAL_KEY = 'carteira:v1';
+let KEY = LOCAL_KEY;
 
 export const DEFAULT_SETTINGS: Settings = {
   cdiRate: 14.9,
@@ -16,9 +18,9 @@ export const DEFAULT_SETTINGS: Settings = {
 
 const empty = (): Data => ({ version: 1, assets: [], transactions: [], settings: { ...DEFAULT_SETTINGS } });
 
-function load(): Data {
+function load(key = KEY): Data {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return empty();
     return normalize(JSON.parse(raw));
   } catch {
@@ -38,6 +40,42 @@ export function normalize(d: Partial<Data>): Data {
 let state: Data = load();
 let undoStack: { label: string; data: Data }[] = [];
 const listeners = new Set<() => void>();
+/** Listeners for local edits only (not remote loads) — used by cloud sync. */
+const editListeners = new Set<(d: Data) => void>();
+
+/** Switches to another local cache (e.g. per logged-in user) and loads it. */
+export function switchStorage(key: string) {
+  KEY = key;
+  state = load(key);
+  undoStack = [];
+  listeners.forEach((l) => l());
+}
+
+/** Reads the data saved under another key without switching (e.g. local data to migrate). */
+export const peekStorage = (key: string): Data | null => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? normalize(JSON.parse(raw)) : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Replaces data with a copy loaded from the cloud (no undo, no re-upload). */
+export function applyRemote(d: Partial<Data>) {
+  state = normalize(d);
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state));
+  } catch {
+    /* storage full */
+  }
+  listeners.forEach((l) => l());
+}
+
+export function onEdit(fn: (d: Data) => void) {
+  editListeners.add(fn);
+  return () => editListeners.delete(fn);
+}
 
 function commit(next: Data, undoLabel?: string) {
   if (undoLabel) undoStack = [...undoStack.slice(-19), { label: undoLabel, data: state }];
@@ -48,6 +86,7 @@ function commit(next: Data, undoLabel?: string) {
     console.error('Falha ao salvar', e);
   }
   listeners.forEach((l) => l());
+  editListeners.forEach((l) => l(state));
 }
 
 // Keep tabs in sync.

@@ -19,7 +19,7 @@ export interface Quote {
   source: 'finnhub' | 'brapi' | 'binance';
 }
 
-export type FeedStatus = 'off' | 'connecting' | 'live' | 'polling' | 'error' | 'needs-key';
+export type FeedStatus = 'off' | 'ready' | 'connecting' | 'live' | 'polling' | 'error' | 'needs-key';
 
 interface LiveState {
   quotes: Map<string, Quote>;
@@ -112,9 +112,13 @@ export function startLive(assets: Asset[], s: Settings) {
   if (!s.livePrices) return;
 
   startFx();
+  // Feeds only run when you hold something from that market; otherwise show "ready".
   if (us.length) startUS(us, s.finnhubToken);
+  else setStatus('us', s.finnhubToken ? 'ready' : 'needs-key');
   if (b3.length) startB3(b3, s.brapiToken);
+  else setStatus('b3', 'ready');
   if (crypto.length) startCrypto(crypto);
+  else setStatus('crypto', 'ready');
 
   // Persist the latest prices so the app opens with them next time.
   timers.push(

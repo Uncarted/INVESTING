@@ -19,6 +19,33 @@ npm test          # calculation engine tests
 npm run release   # rebuilds Carteira.html
 ```
 
+## Accounts and database (Supabase)
+
+With Supabase configured, people sign in (email/password or Google) and each person gets their own portfolio, settings and API keys, stored in a Postgres database. Row Level Security means nobody can read anyone else's data. Without it, the app runs in local-only mode (data in the browser).
+
+**Setup (about 10 minutes, free):**
+
+1. Create a project at [supabase.com](https://supabase.com) (New project → choose a password and the São Paulo region).
+2. Go to **SQL Editor → New query**, paste the contents of [`supabase/schema.sql`](supabase/schema.sql) and click **Run**.
+3. Go to **Project Settings → API** and copy the **Project URL** and the **anon public** key.
+4. In this folder, copy `.env.example` to `.env.local` and paste both values:
+   ```
+   VITE_SUPABASE_URL=https://xxxx.supabase.co
+   VITE_SUPABASE_ANON_KEY=eyJ...
+   ```
+5. Build and put it online:
+   ```bash
+   npm install
+   npm run build        # creates dist/
+   ```
+   Drag the `dist` folder onto [app.netlify.com/drop](https://app.netlify.com/drop) (or deploy with Vercel). You'll get a URL like `https://carteira-xyz.netlify.app`.
+6. Back in Supabase, go to **Authentication → URL Configuration** and set **Site URL** to that address, so confirmation and password-reset emails link to your site.
+7. Optional:
+   - **Google login:** go to **Authentication → Providers → Google**, turn it on and paste a Google OAuth client ID/secret (the page links to the steps).
+   - **Instant sign-up:** turn off **Confirm email** under **Authentication → Providers → Email** if you don't want people to confirm their email before first login.
+
+The anon key is safe to ship in the site: it can only do what the database's Row Level Security allows, which is each user reading and writing their own row. The first time someone logs in on a computer that already has local data, that data is uploaded to their account.
+
 ## Features
 
 The main screen shows what matters at a glance: total value, gain/loss, dividends, tax due, where your money is, and every holding. Everything else sits behind the menu (☰) and opens as a panel.

@@ -3,6 +3,8 @@ import { actions, getData, useData } from './lib/store';
 import { setHideValues } from './lib/format';
 import { exportWorkbook } from './lib/exporters';
 import { flushLive, startLive } from './lib/live';
+import { cloudEnabled, signOut, useCloud } from './lib/cloud';
+import { AuthScreen, Splash } from './components/AuthScreen';
 import { Icon } from './components/Icon';
 import { Toasts } from './components/ui';
 import { TransactionForm, type FormInit } from './components/TransactionForm';
@@ -41,6 +43,7 @@ function useSystemDark() {
 
 export function App() {
   const data = useData();
+  const cloud = useCloud();
   const [panel, setPanel] = useState<PanelId | null>(readHash);
   const [form, setForm] = useState<FormInit | null>(null);
   const [assetId, setAssetId] = useState<string | null>(null);
@@ -108,7 +111,8 @@ export function App() {
 
   const hidden = data.settings.hideValues;
   const backupDays = data.settings.lastBackupAt ? (Date.now() - Date.parse(data.settings.lastBackupAt)) / 86400000 : Infinity;
-  const needsBackup = data.transactions.length >= 10 && backupDays > 30;
+  // With accounts, data lives in the cloud: no backup nagging.
+  const needsBackup = !cloudEnabled && data.transactions.length >= 10 && backupDays > 30;
 
   const topbarActions = (
     <>
@@ -120,6 +124,9 @@ export function App() {
       </button>
     </>
   );
+
+  if (cloudEnabled && !cloud.ready) return <Splash />;
+  if (cloudEnabled && !cloud.session) return <AuthScreen />;
 
   return (
     <>
@@ -135,6 +142,19 @@ export function App() {
             </button>
             {menu && (
               <div className="menu" role="menu">
+                {cloudEnabled && cloud.session && (
+                  <>
+                    <div className="menu-account">
+                      <span className="acct-avatar">{(cloud.session.user.email ?? '?')[0].toUpperCase()}</span>
+                      <span style={{ minWidth: 0 }}>
+                        <b>{cloud.session.user.email}</b>
+                        <span className="sub"><SyncLabel status={cloud.sync} /></span>
+                      </span>
+                      <button className="btn sm" onClick={() => { setMenu(false); void signOut(); }}>Sair</button>
+                    </div>
+                    <div className="menu-sep" />
+                  </>
+                )}
                 {(['lancamentos', 'proventos', 'ir'] as PanelId[]).map((id) => (
                   <MenuItem key={id} icon={PANELS[id].icon} title={PANELS[id].title} sub={PANELS[id].sub} onClick={() => open(id)} />
                 ))}
@@ -202,4 +222,17 @@ function MenuItem({ icon, title, sub, onClick, warn }: { icon: string; title: st
       <span />
     </button>
   );
+}
+
+function SyncLabel({ status }: { status: string }) {
+  const map: Record<string, [string, string]> = {
+    idle: ['', 'var(--muted)'],
+    loading: ['Carregando…', 'var(--muted)'],
+    saving: ['Salvando…', 'var(--muted)'],
+    saved: ['✓ Salvo na nuvem', 'var(--pos)'],
+    error: ['Erro ao salvar — tentando de novo', 'var(--neg)'],
+    offline: ['Sem internet — salvo neste computador', 'var(--warn-ink)'],
+  };
+  const [label, color] = map[status] ?? map.idle;
+  return <span style={{ color }}>{label}</span>;
 }
