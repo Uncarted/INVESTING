@@ -8,6 +8,7 @@ type Tab = 'entrar' | 'criar';
 
 export function AuthScreen() {
   const [tab, setTab] = useState<Tab>('entrar');
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -18,6 +19,7 @@ export function AuthScreen() {
     e.preventDefault();
     setError('');
     setInfo('');
+    if (tab === 'criar' && name.trim().length < 2) return setError(t('Como podemos te chamar? Digite seu nome.', 'What should we call you? Enter your name.'));
     if (!email.includes('@')) return setError(t('Digite um email válido.', 'Enter a valid email.'));
     if (password.length < 6) return setError(t('A senha precisa ter pelo menos 6 caracteres.', 'The password needs at least 6 characters.'));
     setBusy(true);
@@ -25,7 +27,7 @@ export function AuthScreen() {
       const err = await signIn(email.trim(), password);
       if (err) setError(err);
     } else {
-      const r = await signUp(email.trim(), password);
+      const r = await signUp(email.trim(), password, name.trim());
       if (r.error) setError(r.error);
       else if (r.needsConfirm) setInfo(t(`Enviamos um link de confirmação para ${email.trim()}. Abra o email, confirme e depois entre aqui.`, `We sent a confirmation link to ${email.trim()}. Open the email, confirm, then sign in here.`));
     }
@@ -42,14 +44,11 @@ export function AuthScreen() {
 
   return (
     <div className="auth">
+      <button className="btn sm ghost auth-lang" onClick={() => actions.updateSettings({ language: getLang() === 'en' ? 'pt' : 'en' })}>
+        <Icon name="globe" size={14} /> {getLang() === 'en' ? 'Português' : 'English'}
+      </button>
       <div className="auth-side">
-        <div className="row">
-          <div className="wordmark" style={{ fontSize: 40 }}>carteira<i>.</i></div>
-          <div className="spacer" />
-          <button className="btn sm ghost" onClick={() => actions.updateSettings({ language: getLang() === 'en' ? 'pt' : 'en' })}>
-            <Icon name="globe" size={14} /> {getLang() === 'en' ? 'Português' : 'English'}
-          </button>
-        </div>
+        <div className="wordmark" style={{ fontSize: 40 }}>carteira<i>.</i></div>
         <h1>
           {t('Seus investimentos,', 'Your investments,')}<br /><em>{t('num lugar só.', 'all in one place.')}</em>
         </h1>
@@ -79,9 +78,15 @@ export function AuthScreen() {
 
         <div className="auth-or"><span>{t('ou com email', 'or with email')}</span></div>
 
+        {tab === 'criar' && (
+          <label className="field">
+            <span>{t('Nome', 'Name')}</span>
+            <input className="input" autoComplete="given-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('Como você quer ser chamado', 'What should we call you')} autoFocus />
+          </label>
+        )}
         <label className="field">
           <span>Email</span>
-          <input className="input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('voce@email.com', 'you@email.com')} autoFocus />
+          <input className="input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('voce@email.com', 'you@email.com')} autoFocus={tab === 'entrar'} />
         </label>
         <label className="field">
           <span className="row">

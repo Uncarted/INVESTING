@@ -89,8 +89,12 @@ export async function signIn(email: string, password: string) {
   return error ? translate(error.message) : null;
 }
 
-export async function signUp(email: string, password: string): Promise<{ error: string | null; needsConfirm: boolean }> {
-  const { data, error } = await supabase!.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo() } });
+export async function signUp(email: string, password: string, name: string): Promise<{ error: string | null; needsConfirm: boolean }> {
+  const { data, error } = await supabase!.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: redirectTo(), data: { full_name: name } },
+  });
   if (error) return { error: translate(error.message), needsConfirm: false };
   return { error: null, needsConfirm: !data.session };
 }
@@ -102,6 +106,19 @@ export async function signInWithGoogle() {
 
 export async function resetPassword(email: string) {
   const { error } = await supabase!.auth.resetPasswordForEmail(email, { redirectTo: redirectTo() });
+  return error ? translate(error.message) : null;
+}
+
+/** First name from the account (sign-up form or Google profile). */
+export function userFirstName(session: Session | null): string {
+  const m = session?.user.user_metadata ?? {};
+  const full = String(m.full_name ?? m.name ?? '').trim();
+  return full.split(/\s+/)[0] ?? '';
+}
+
+export async function updateName(name: string) {
+  const { data, error } = await supabase!.auth.updateUser({ data: { full_name: name } });
+  if (!error && data.user) set({ session: state.session ? { ...state.session, user: data.user } : state.session });
   return error ? translate(error.message) : null;
 }
 

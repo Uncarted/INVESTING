@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { actions, useData } from '../lib/store';
 import { fetchRates } from '../lib/quotes';
 import { checkKey, cleanKey } from '../lib/keys';
-import { cloudEnabled } from '../lib/cloud';
+import { cloudEnabled, updateName, useCloud } from '../lib/cloud';
 import { getLang, t } from '../lib/i18n';
 import { useLive, type FeedStatus } from '../lib/live';
 import { fmtDate, money, numStr, parseNumber } from '../lib/format';
@@ -39,6 +39,7 @@ export function Configuracoes() {
 
   return (
     <div className="stack" style={{ maxWidth: 820 }}>
+      {cloud && <AccountCard />}
       <div className="card card-pad stack">
         <h2 style={{ fontSize: 15, margin: 0 }}>Idioma · Language</h2>
         <div className="seg" style={{ width: 'fit-content' }}>
@@ -184,6 +185,38 @@ function Feed({ name, detail, status }: { name: string; detail: string; status: 
 }
 
 /** Quiet key input: saves when you leave the field (or press Enter) and shows a small ✓/✗ from a live test. */
+function AccountCard() {
+  const { session } = useCloud();
+  const current = String(session?.user.user_metadata?.full_name ?? session?.user.user_metadata?.name ?? '');
+  return (
+    <div className="card card-pad stack">
+      <h2 style={{ fontSize: 15, margin: 0 }}>{t('Sua conta', 'Your account')}</h2>
+      <div className="form-grid">
+        <label className="field">
+          <span>{t('Nome', 'Name')}</span>
+          <input
+            key={current}
+            className="input"
+            defaultValue={current}
+            placeholder={t('Como você quer ser chamado', 'What should we call you')}
+            onBlur={async (e) => {
+              const v = e.currentTarget.value.trim();
+              if (v === current) return;
+              const err = await updateName(v);
+              toast(err ?? t('Nome salvo', 'Name saved'));
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+          />
+        </label>
+        <label className="field">
+          <span>Email</span>
+          <input className="input" value={session?.user.email ?? ''} disabled />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function KeyField({
   label, kind, value, onSave, help,
 }: { label: string; kind: 'finnhub' | 'brapi' | 'twelve'; value?: string; onSave: (v: string | undefined) => void; help: React.ReactNode }) {

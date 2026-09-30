@@ -12,6 +12,7 @@ import { Icon } from '../components/Icon';
 import { Logo, marketOf } from '../components/Logo';
 import { sampleData } from '../lib/sample';
 import { t } from '../lib/i18n';
+import { useCloud, userFirstName } from '../lib/cloud';
 
 type SortKey = 'value' | 'result' | 'day' | 'name';
 type View = 'classe' | 'moeda' | 'ativo' | 'instituicao';
@@ -29,6 +30,8 @@ const instLabel = (k: string) => (k === NO_INST ? t('Sem instituição', 'No ins
 export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: string) => void; openAsset: (id: string) => void }) {
   const data = useData();
   const live = useLive();
+  const cloud = useCloud();
+  const firstName = userFirstName(cloud.session);
   const tdy = today();
   const [filter, setFilter] = useState<Filter>(null);
   const [view, setView] = useState<View>('classe');
@@ -53,7 +56,9 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
   if (!data.assets.length) {
     return (
       <div className="welcome reveal">
-        <div className="eyebrow">{t('Sua carteira, num lugar só', 'Your portfolio, all in one place')}</div>
+        <div className="eyebrow">
+          {firstName ? t(`Que bom ter você aqui, ${firstName}!`, `Great to have you here, ${firstName}!`) : t('Sua carteira, num lugar só', 'Your portfolio, all in one place')}
+        </div>
         <h1 style={{ marginTop: 18 }}>
           {t('Tudo o que você investe,', 'Everything you invest,')}<br /><em>{t('bonito e organizado.', 'beautiful and organized.')}</em>
         </h1>
@@ -140,7 +145,8 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
 
   return (
     <>
-      <section className="hero">
+      <div className="greeting">{greeting(firstName, dayChange, total)}</div>
+      <section className="hero" style={{ paddingTop: 8 }}>
         <div className="reveal">
           <div className="eyebrow row" style={{ gap: 10 }}>
             {t('Patrimônio total', 'Total net worth')}
@@ -332,6 +338,26 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
       </section>
     </>
   );
+}
+
+/** A short, friendly line that depends on the time of day and how the day is going. */
+function greeting(name: string, dayChange: number, total: number) {
+  const h = new Date().getHours();
+  const hello = h < 5 ? t('Boa noite', 'Good evening') : h < 12 ? t('Bom dia', 'Good morning') : h < 18 ? t('Boa tarde', 'Good afternoon') : t('Boa noite', 'Good evening');
+  const who = name ? <b>{name}</b> : null;
+  const dayPct = total ? dayChange / total : 0;
+  if (dayPct > 0.004)
+    return <>{hello}{who && <>, {who}</>}. {t('Dia bom na carteira hoje', 'Good day for your portfolio')} 📈</>;
+  if (dayPct < -0.008)
+    return <>{hello}{who && <>, {who}</>}. {t('Mercado agitado hoje — foco no longo prazo', 'Choppy market today — eyes on the long run')}.</>;
+  // Stable per day, so the message doesn't change on every render.
+  const lines = [
+    <>{hello}{who && <>, {who}</>}.</>,
+    <>{t('Que bom te ver de novo', 'Great to see you again')}{who && <>, {who}</>}.</>,
+    <>{t('Olá de novo', 'Welcome back')}{who && <>, {who}</>}. {t('Tudo em ordem por aqui', 'Everything is in order')}.</>,
+    <>{hello}{who && <>, {who}</>}. {t('Vamos ver como está sua carteira', "Let's see how your portfolio is doing")}.</>,
+  ];
+  return lines[new Date().getDate() % lines.length];
 }
 
 const pct = (p: Position) => (p.cost ? (p.value - p.cost) / p.cost : 0);
