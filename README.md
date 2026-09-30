@@ -25,7 +25,10 @@ The main screen shows what matters at a glance: total value, gain/loss, dividend
 
 
 - **Home**: total value, result, amount invested over time, dividends (12 months), the next DARF due, profit from sales this year, an allocation bar (click a class to filter), and the holdings list. Click an asset to see its history, edit it, update its price or enter the bank balance.
-- **Novo lançamento** (press `N` from anywhere): buys and sells, fixed-income deposits and redemptions, dividends/JCP/income, splits, reverse splits and bonus shares. The asset class is detected from the ticker. "Salvar e adicionar outro" lets you enter several in a row.
+- **Novo lançamento** (press `N` from anywhere): buys and sells, fixed-income deposits and redemptions, dividends/JCP/income, splits, reverse splits and bonus shares. "Salvar e adicionar outro" lets you enter several in a row.
+  - Type a ticker or a company name ("take two", "petrobras", "bitcoin") and suggestions appear instantly from a built-in list of about 900 B3 stocks, FIIs, ETFs, US stocks and cryptos. Online search adds anything else.
+  - Picking an asset fills in class, currency, broker and **today's price**. Changing the date fills in **that day's close** (and the dollar rate for foreign assets).
+  - Type either the quantity or the amount to invest, and the other is calculated. Selling has a "vender tudo" (sell all) shortcut, and the form shows the new average price or the estimated result before you save.
 - **Imposto de Renda** for any year:
   - *Bens e Direitos*: group/code, a ready-to-copy description, and the position on 31/12 of the previous and current year (at cost).
   - *Apuração mensal*: the R$ 20k/month exemption for stocks, losses carried forward (stocks/ETFs/BDRs separate from FIIs), 15%/20% rates, 0.005% IRRF, and DARF 6015 with the R$ 10 minimum and due date. Crypto (R$ 35k exemption) and foreign assets (yearly) are shown separately.

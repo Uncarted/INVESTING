@@ -92,6 +92,19 @@ export function Configuracoes() {
           </span>
         </label>
         <label className="field">
+          <span>Chave da Twelve Data (preço de datas passadas — ações dos EUA)</span>
+          <input
+            className="input"
+            type="password"
+            defaultValue={s.twelveDataToken ?? ''}
+            placeholder="opcional — cole aqui sua chave gratuita"
+            onBlur={(e) => actions.updateSettings({ twelveDataToken: e.target.value.trim() || undefined })}
+          />
+          <span className="hint">
+            Grátis em <a href="https://twelvedata.com/register" target="_blank" rel="noreferrer">twelvedata.com</a>. Preenche sozinho o preço de uma compra antiga de AMD, TTWO etc. quando você escolhe a data.
+          </span>
+        </label>
+        <label className="field">
           <span>Token da brapi (B3)</span>
           <input
             className="input"

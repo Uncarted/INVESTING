@@ -9,6 +9,7 @@ import { AreaChart } from '../components/charts';
 import { Donut, type DonutSlice } from '../components/Donut';
 import { CountUp, Flash } from '../components/motion';
 import { Icon } from '../components/Icon';
+import { Logo, marketOf } from '../components/Logo';
 import { sampleData } from '../lib/sample';
 
 type SortKey = 'value' | 'result' | 'day' | 'name';
@@ -286,9 +287,7 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
             const unit = p.asset.cls === 'CRIPTO' ? '' : p.asset.cls === 'ACAO' || p.asset.cls === 'EXTERIOR' ? ' ações' : ' cotas';
             return (
               <div key={p.asset.id} className="h-row reveal" style={{ ['--i' as string]: Math.min(i, 14) }} onClick={() => openAsset(p.asset.id)}>
-                <span className="avatar" style={{ background: `color-mix(in srgb, var(--c-${p.asset.cls}) 18%, transparent)`, color: `var(--c-${p.asset.cls})` }}>
-                  {initials(p.asset.ticker, m)}
-                </span>
+                <Logo symbol={p.asset.ticker} market={marketOf(p.asset.cls, cur)} cls={p.asset.cls} />
                 <span className="h-name">
                   <b>
                     {p.asset.ticker}
@@ -334,11 +333,6 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
 
 const pct = (p: Position) => (p.cost ? (p.value - p.cost) / p.cost : 0);
 
-function initials(ticker: string, market: boolean) {
-  if (market) return ticker.replace(/\d+$/, '').slice(0, 4);
-  const words = ticker.split(/\s+/).filter((w) => /[A-Za-zÀ-ú]/.test(w));
-  return words.slice(0, 2).map((w) => w[0].toUpperCase()).join('');
-}
 
 function splitMoney(v: number): [string, string] {
   const s = money(v);

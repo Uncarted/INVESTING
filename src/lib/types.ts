@@ -148,6 +148,7 @@ export interface Settings {
   selicRate: number;
   brapiToken?: string;
   finnhubToken?: string;
+  twelveDataToken?: string;
   /** BRL per unit of foreign currency. */
   fx: { USD: number; EUR: number; updatedAt?: string };
   livePrices: boolean;

@@ -149,3 +149,16 @@ describe('moeda estrangeira', () => {
     expect(s.gain).toBeCloseTo(4 * 120 * 5.5 - 4 * 600, 6);
   });
 });
+
+describe('busca de tickers', () => {
+  it('finds by ticker and by company name', async () => {
+    const { searchDirectory } = await import('./tickers');
+    expect(searchDirectory('ttwo')[0].symbol).toBe('TTWO');
+    expect(searchDirectory('take')[0].symbol).toBe('TTWO');
+    expect(searchDirectory('petrobras')[0].symbol).toBe('PETR4');
+    expect(searchDirectory('amd')[0].symbol).toBe('AMD');
+    expect(searchDirectory('bitcoin')[0].symbol).toBe('BTC');
+    expect(searchDirectory('hglg')[0].kind).toBe('F');
+    expect(searchDirectory('itau').map((t) => t.symbol)).toContain('ITUB4');
+  });
+});
