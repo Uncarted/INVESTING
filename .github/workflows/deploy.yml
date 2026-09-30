@@ -1,7 +1,7 @@
 name: Deploy to GitHub Pages
 
 # Builds the app and publishes it to the gh-pages branch on every push.
-# Site: https://uncarted.github.io/INVESTING/
+# Site: https://wallethome.online (custom domain via public/CNAME)
 
 on:
   push:
