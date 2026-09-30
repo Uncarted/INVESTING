@@ -12,6 +12,7 @@ import { guessClass, normalizeTicker } from '../lib/classify';
 import { fmtCurrency, fmtDate, money, numStr, parseNumber, qty, today, toISODate } from '../lib/format';
 import { t } from '../lib/i18n';
 import { runMarket, groupTx, currencyOf } from '../lib/portfolio';
+import { estimateSaleTax, type SaleTaxEstimate } from '../lib/tax';
 
 type Mode = 'market' | 'fixed' | 'income' | 'event';
 
@@ -25,6 +26,7 @@ export interface FormInit {
   mode?: Mode;
   asset?: Asset;
   tx?: Transaction;
+  side?: 'BUY' | 'SELL';
 }
 
 /** What the user picked in the search: enough to create the asset and fetch prices. */
@@ -84,7 +86,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
   );
   const [notes, setNotes] = useState(editing?.notes ?? '');
   // market
-  const [side, setSide] = useState<'BUY' | 'SELL'>(editing?.type === 'SELL' ? 'SELL' : 'BUY');
+  const [side, setSide] = useState<'BUY' | 'SELL'>(init?.side ?? (editing?.type === 'SELL' ? 'SELL' : 'BUY'));
   const [quantity, setQuantity] = useState(editing && modeOf(editing, initAsset) !== 'fixed' ? str(editing.quantity) : '');
   const [price, setPrice] = useState(editing ? str(editing.price) : '');
   const [fees, setFees] = useState(editing ? str(editing.fees) : '');
@@ -453,7 +455,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
                   inputMode="decimal"
                   value={lastEdit === 'total' ? totalStr : Number.isFinite(gross) && gross > 0 ? str(Math.round(gross * 100) / 100) : ''}
                   onChange={(e) => { setLastEdit('total'); setTotalStr(e.target.value); }}
-                  placeholder={t('ou digite quanto quer investir', 'or type how much to invest')}
+                  placeholder={t('ou digite o valor total', 'or type the total')}
                 />
                 {lastEdit === 'total' && leftover > 0.009 && <span className="hint">{t('Compra', 'Buys')} {qty(q)} · {t('sobra', 'left over')} {fmtCurrency(leftover, currency, { always: true })}</span>}
               </label>
@@ -491,6 +493,14 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
                 </div>
               )}
             </div>
+            {side === 'SELL' && existing && q > 0 && p > 0 && (
+              <TaxPreview
+                estimate={estimateSaleTax(data.assets, data.transactions, data.settings, {
+                  id: editing?.id ?? '__draft', assetId: existing.id, type: 'SELL', date, quantity: q, price: p, fees: f,
+                  fxRate: foreign && fx > 0 ? fx : undefined, createdAt: editing?.createdAt ?? new Date().toISOString(),
+                })}
+              />
+            )}
           </>
         )}
 
@@ -644,6 +654,62 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
         <button type="submit" hidden />
       </form>
     </Modal>
+  );
+}
+
+/** Subtle one-line income-tax preview for a sale. */
+function TaxPreview({ estimate: e }: { estimate: SaleTaxEstimate | null }) {
+  if (!e) return null;
+  const pctUsed = e.limit ? Math.min(1, e.monthSales / e.limit) : 0;
+  let title: React.ReactNode;
+  let sub: React.ReactNode;
+  let tone: 'ok' | 'due' | 'info' = 'info';
+  switch (e.kind) {
+    case 'exempt-stocks':
+      tone = 'ok';
+      title = t('Isento de IR', 'Tax-free');
+      sub = t(
+        `Vendas de ações neste mês: ${money(e.monthSales, { always: true })} de ${money(e.limit!, { always: true })}. Lucro de ${money(e.gain, { always: true })} livre de imposto.`,
+        `Stock sales this month: ${money(e.monthSales, { always: true })} of ${money(e.limit!, { always: true })}. ${money(e.gain, { always: true })} profit tax-free.`,
+      );
+      break;
+    case 'crypto-exempt':
+      tone = 'ok';
+      title = t('Isento de IR', 'Tax-free');
+      sub = t(`Vendas de cripto no mês: ${money(e.monthSales, { always: true })} de ${money(e.limit!, { always: true })}.`, `Crypto sales this month: ${money(e.monthSales, { always: true })} of ${money(e.limit!, { always: true })}.`);
+      break;
+    case 'loss':
+      title = t('Sem IR — venda com prejuízo', 'No tax — sold at a loss');
+      sub = t(`Prejuízo de ${money(-e.gain, { always: true })}. Ele abate o imposto de lucros futuros.`, `A ${money(-e.gain, { always: true })} loss. It offsets tax on future gains.`);
+      break;
+    case 'annual':
+      tone = 'due';
+      title = <>{t('IR estimado', 'Estimated tax')} {money(e.tax, { always: true })}</>;
+      sub = t(`15% sobre o lucro de ${money(e.gain, { always: true })}, pago na declaração anual (ações no exterior não têm isenção).`, `15% of the ${money(e.gain, { always: true })} profit, paid with the yearly return (no exemption abroad).`);
+      break;
+    case 'crypto':
+      tone = 'due';
+      title = <>{t('IR estimado', 'Estimated tax')} {money(e.tax, { always: true })}</>;
+      sub = t('15% sobre o lucro · vendas de cripto acima de R$ 35 mil no mês (GCAP, até o fim do mês seguinte).', '15% of the profit · crypto sales above R$ 35k this month (GCAP, due by the end of next month).');
+      break;
+    default:
+      tone = e.tax > 0 ? 'due' : 'info';
+      title = e.tax > 0 ? <>{t('IR estimado', 'Estimated tax')} {money(e.tax, { always: true })}</> : t('Sem IR a pagar', 'No tax due');
+      sub = e.tax > 0
+        ? t(`${Math.round(e.rate * 100)}% sobre o lucro · DARF 6015 até ${fmtDate(e.dueDate)}.`, `${Math.round(e.rate * 100)}% of the profit · DARF 6015 due ${fmtDate(e.dueDate)}.`)
+        : t('Prejuízos anteriores cobrem este lucro.', 'Earlier losses cover this profit.');
+  }
+  return (
+    <div className={'tax-preview ' + tone}>
+      <Icon name={tone === 'ok' ? 'check' : 'receipt'} size={16} />
+      <div className="tp-text">
+        <b>{title}</b>
+        <span>{sub}</span>
+        {(e.kind === 'exempt-stocks' || e.kind === 'monthly') && e.limit && (
+          <span className="tp-bar"><span style={{ width: `${pctUsed * 100}%` }} /></span>
+        )}
+      </div>
+    </div>
   );
 }
 

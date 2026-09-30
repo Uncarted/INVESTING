@@ -2,12 +2,13 @@ import { useMemo, useState } from 'react';
 import { Drawer, ClassChip, Delta, toast } from './ui';
 import { Icon } from './Icon';
 import { actions, useData } from '../lib/store';
-import type { Asset, AssetClass, FixedKind, Indexer, Transaction } from '../lib/types';
+import type { Asset, AssetClass, FixedKind, Indexer, Settings, Transaction } from '../lib/types';
 import { CLASS_LABEL, CLASS_ORDER, FIXED_KIND_LABEL, INDEXER_LABEL, TX_LABEL, isMarketClass } from '../lib/types';
 import { computePositions, sortTx, fixedAnnualRate, currencyOf } from '../lib/portfolio';
 import { useLive, withLive } from '../lib/live';
 import { Flash } from './motion';
 import { t as tr } from '../lib/i18n';
+import { estimateSaleTax } from '../lib/tax';
 import { CURRENCY_SYMBOL } from '../lib/types';
 import { fmtCurrency, fmtDate, money, numStr, parseNumber, percent, qty, signedPercent, today } from '../lib/format';
 import type { FormInit } from './TransactionForm';
@@ -73,6 +74,14 @@ export function AssetDrawer({ assetId, onClose, onAdd }: { assetId: string; onCl
               <Stat label={tr('Proventos recebidos', 'Dividends received')} value={money(pos.income)} />
               {pos.realized !== 0 && <Stat label={tr('Lucro/prejuízo realizado', 'Realized gain/loss')} value={<Delta value={pos.realized}>{money(pos.realized)}</Delta>} />}
             </div>
+            {market && pos.quantity > 0 && (
+              <div className="sell-row">
+                <SellAllHint assetId={asset.id} quantity={pos.quantity} price={asset.currentPrice} settings={settings} />
+                <button className="btn sm sell-btn" onClick={() => onAdd({ asset, mode: 'market', side: 'SELL' })}>
+                  <Icon name="down" size={14} /> {tr('Vender', 'Sell')}
+                </button>
+              </div>
+            )}
             <PriceEditor asset={asset} />
           </>
         )}
@@ -92,6 +101,27 @@ export function AssetDrawer({ assetId, onClose, onAdd }: { assetId: string; onCl
         </div>
       </div>
     </Drawer>
+  );
+}
+
+/** "If you sold everything today": profit and estimated income tax, in one quiet line. */
+function SellAllHint({ assetId, quantity, price, settings }: { assetId: string; quantity: number; price?: number; settings: Settings }) {
+  const data = useData();
+  if (!price) return <span className="muted small">{tr('Informe a cotação para ver o IR de uma venda.', 'Add a price to see the tax on a sale.')}</span>;
+  const asset = data.assets.find((a) => a.id === assetId);
+  const e = estimateSaleTax(data.assets, data.transactions, settings, {
+    id: '__sellall', assetId, type: 'SELL', date: today(), quantity, price, fees: 0,
+    fxRate: asset && currencyOf(asset) !== 'BRL' ? settings.fx[currencyOf(asset) as 'USD' | 'EUR'] : undefined,
+    createdAt: new Date().toISOString(),
+  });
+  if (!e) return null;
+  return (
+    <span className="small text-2">
+      {tr('Vendendo tudo hoje:', 'Selling everything today:')}{' '}
+      <b className={e.gain >= 0 ? 'pos' : 'neg'}>{e.gain >= 0 ? '+' : ''}{money(e.gain)}</b>
+      {' · '}
+      {e.tax > 0 ? <>{tr('IR', 'tax')} ≈ <b>{money(e.tax)}</b></> : e.gain > 0 ? <span className="pos">{tr('isento', 'tax-free')}</span> : tr('sem IR', 'no tax')}
+    </span>
   );
 }
 

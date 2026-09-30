@@ -34,8 +34,8 @@ export const onLangChange = (fn: () => void) => {
 
 // Shared label maps (mutated in place so every import sees the current language).
 const CLASS: Record<Lang, Record<AssetClass, string>> = {
-  pt: { ACAO: 'Ações', FII: 'FIIs', ETF: 'ETFs', BDR: 'BDRs', RENDA_FIXA: 'Renda fixa', FUNDO: 'Fundos', CRIPTO: 'Cripto', EXTERIOR: 'Exterior', OUTRO: 'Outros' },
-  en: { ACAO: 'Stocks', FII: 'REITs (FIIs)', ETF: 'ETFs', BDR: 'BDRs', RENDA_FIXA: 'Fixed income', FUNDO: 'Funds', CRIPTO: 'Crypto', EXTERIOR: 'Foreign', OUTRO: 'Other' },
+  pt: { ACAO: 'Ações BR', FII: 'FIIs', ETF: 'ETFs', BDR: 'BDRs', RENDA_FIXA: 'Renda fixa', FUNDO: 'Fundos', CRIPTO: 'Cripto', EXTERIOR: 'Ações EUA', OUTRO: 'Outros' },
+  en: { ACAO: 'BR stocks', FII: 'REITs (FIIs)', ETF: 'ETFs', BDR: 'BDRs', RENDA_FIXA: 'Fixed income', FUNDO: 'Funds', CRIPTO: 'Crypto', EXTERIOR: 'US stocks', OUTRO: 'Other' },
 };
 const TX: Record<Lang, Record<TxType, string>> = {
   pt: { BUY: 'Compra', SELL: 'Venda', DIVIDEND: 'Dividendo', JCP: 'JCP', INCOME: 'Rendimento', SPLIT: 'Desdobro/Grupamento', BONUS: 'Bonificação' },

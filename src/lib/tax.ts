@@ -1,6 +1,6 @@
 import type { Asset, AssetClass, Settings, Transaction } from './types';
 import { isMarketClass } from './types';
-import { computePositions, groupTx, type Position, type Sale } from './portfolio';
+import { allSales, computePositions, groupTx, type Position, type Sale } from './portfolio';
 import { FIXED_KIND_PT, t as tr } from './i18n';
 
 export const ACOES_EXEMPTION = 20000;
@@ -302,4 +302,86 @@ export function incomeByAsset(assets: Asset[], txs: Transaction[], year: number)
     else row.other += v;
   }
   return [...map.values()].sort((a, b) => a.asset.ticker.localeCompare(b.asset.ticker));
+}
+
+// ---------- Tax preview for a single sale ----------
+
+/** DARF due date: last business day of the month after the sale (ignores holidays). */
+export function darfDue(ym: string) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m + 1, 0);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+export interface SaleTaxEstimate {
+  /** Result of this sale in BRL (proceeds − cost at average price). */
+  gain: number;
+  /** Extra income tax this sale causes, in BRL. */
+  tax: number;
+  /**
+   * How the tax works for this asset:
+   * - exempt-stocks: B3 stocks, month's stock sales ≤ R$ 20k (gain is tax-free)
+   * - monthly: DARF 6015 by the end of next month (stocks > 20k, ETFs, BDRs, FIIs)
+   * - crypto: GCAP, exempt when month's crypto sales ≤ R$ 35k
+   * - annual: foreign assets (Lei 14.754/2023), 15% paid with the yearly return
+   * - loss: no tax; the loss offsets future gains
+   */
+  kind: 'exempt-stocks' | 'monthly' | 'crypto' | 'crypto-exempt' | 'annual' | 'loss';
+  /** Rate applied (0.15 / 0.2). */
+  rate: number;
+  /** Stock (or crypto) sales in the month including this one, for the exemption limit. */
+  monthSales: number;
+  limit?: number;
+  dueDate?: string;
+}
+
+/** What this sale would add to the user's income tax, using the same engine as the IR report. */
+export function estimateSaleTax(
+  assets: Asset[],
+  txs: Transaction[],
+  settings: Pick<Settings, 'fx'>,
+  draft: Transaction,
+): SaleTaxEstimate | null {
+  const asset = assets.find((a) => a.id === draft.assetId);
+  if (!asset || !isMarketClass(asset.cls) || draft.type !== 'SELL') return null;
+  const others = txs.filter((t) => t.id !== draft.id);
+  const before = allSales(assets, others, settings);
+  const after = allSales(assets, [...others, draft], settings);
+  const sale = after.find((s) => s.txId === draft.id);
+  if (!sale) return null;
+  const year = Number(draft.date.slice(0, 4));
+  const ym = draft.date.slice(0, 7);
+  const tb = computeTaxYear(before, year);
+  const ta = computeTaxYear(after, year);
+  const mb = tb.months.find((m) => m.month === ym)!;
+  const ma = ta.months.find((m) => m.month === ym)!;
+  const base = { gain: sale.gain, monthSales: 0 };
+
+  if (asset.cls === 'EXTERIOR') {
+    const tax = Math.max(0, ta.exterior.tax - tb.exterior.tax);
+    return { ...base, tax, rate: 0.15, kind: sale.gain < 0 ? 'loss' : 'annual' };
+  }
+  if (asset.cls === 'CRIPTO') {
+    const tax = Math.max(0, ma.cryptoTax - mb.cryptoTax);
+    return {
+      ...base, tax, rate: 0.15, monthSales: ma.cryptoSales, limit: CRYPTO_EXEMPTION,
+      kind: sale.gain < 0 ? 'loss' : ma.cryptoExempt ? 'crypto-exempt' : 'crypto',
+    };
+  }
+  const tax = Math.max(0, ma.totalTax - mb.totalTax);
+  if (asset.cls === 'ACAO') {
+    return {
+      ...base, tax, rate: 0.15, monthSales: ma.acoesSales, limit: ACOES_EXEMPTION,
+      kind: sale.gain < 0 ? 'loss' : ma.acoesExempt ? 'exempt-stocks' : 'monthly',
+      dueDate: tax > 0 ? darfDue(ym) : undefined,
+    };
+  }
+  return {
+    ...base, tax, rate: asset.cls === 'FII' ? 0.2 : 0.15,
+    kind: sale.gain < 0 ? 'loss' : 'monthly',
+    dueDate: tax > 0 ? darfDue(ym) : undefined,
+  };
 }

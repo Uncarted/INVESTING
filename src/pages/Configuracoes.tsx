@@ -8,7 +8,7 @@ import { useLive, type FeedStatus } from '../lib/live';
 import { fmtDate, money, numStr, parseNumber } from '../lib/format';
 import { toast } from '../components/ui';
 import { Icon } from '../components/Icon';
-import { exportBackup } from '../lib/exporters';
+import { exportBackup, exportWorkbook } from '../lib/exporters';
 import { sampleData } from '../lib/sample';
 
 export function Configuracoes() {
@@ -133,6 +133,9 @@ export function Configuracoes() {
           {s.lastBackupAt ? ` ${t('Último backup em', 'Last backup')} ${fmtDate(s.lastBackupAt.slice(0, 10))}.` : cloud ? '' : ` ${t('Nenhum backup feito ainda.', 'No backup yet.')}`}
         </p>
         <div className="row wrap">
+          <button className="btn" onClick={() => exportWorkbook(data)}>
+            <Icon name="download" size={16} /> {t('Baixar planilha (Excel)', 'Download spreadsheet (Excel)')}
+          </button>
           <button className="btn" onClick={() => { exportBackup(data); actions.updateSettings({ lastBackupAt: new Date().toISOString() }); }}>
             <Icon name="download" size={16} /> {t('Salvar backup', 'Save backup')}
           </button>

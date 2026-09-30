@@ -294,6 +294,9 @@ a { color: var(--accent-text); }
   background: var(--surface-2); width: 100%; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
 }
 textarea.input { height: auto; padding: 10px 14px; resize: vertical; }
+/* Form fields: numbers read left-aligned like every other field, with tabular digits. */
+input.input.num { text-align: left; font-variant-numeric: tabular-nums; }
+.input::placeholder { opacity: 1; text-overflow: ellipsis; }
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .input::placeholder { color: var(--muted); }
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -404,6 +407,20 @@ table.table { width: 100%; border-collapse: collapse; }
 .auth-lang { position: absolute; top: 20px; right: 24px; }
 .greeting { font-family: var(--font-display); font-size: 26px; color: var(--text-2); margin-bottom: 10px; animation: fade-up 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .greeting b { color: var(--text); font-weight: 400; }
+.tax-preview { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: transparent; animation: fade-up 0.25s ease-out; }
+.tax-preview > svg { margin-top: 2px; flex: none; color: var(--muted); }
+.tax-preview.ok > svg { color: var(--pos); }
+.tax-preview.due > svg { color: var(--warn-ink); }
+.tp-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.tp-text b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tax-preview.ok .tp-text b { color: var(--pos); }
+.tp-text span { font-size: 12.5px; color: var(--text-2); line-height: 1.4; }
+.tp-bar { display: block; height: 3px; border-radius: 2px; background: var(--surface-3); margin-top: 6px; overflow: hidden; }
+.tp-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--pos); transition: width 0.3s; }
+.tax-preview.due .tp-bar > span { background: var(--warn-ink); }
+.sell-row { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 12px 10px 14px; border-radius: 14px; border: 1px solid var(--border); }
+.sell-btn { border-color: color-mix(in srgb, var(--neg) 45%, transparent); color: var(--neg); }
+.sell-btn:hover { background: var(--neg-soft); }
 .badge-btn { border: 0; cursor: pointer; font: inherit; font-weight: 600; font-size: 13px; }
 .badge-btn:hover { background: var(--surface-3); }
 .connect-hint { margin-top: 14px; display: inline-flex; align-items: center; gap: 8px; border: 1px dashed var(--border-strong); background: none; color: var(--accent-text); border-radius: 999px; padding: 7px 14px; cursor: pointer; font-weight: 550; }

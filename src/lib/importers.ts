@@ -46,13 +46,63 @@ function getter(row: Row) {
   };
 }
 
-function detect(rows: Row[]): 'negociacao' | 'movimentacao' | 'template' | null {
+// Column names used by US brokers (Nomad, Avenue, Inter Global, IBKR, Schwab…), in English or Portuguese.
+const US_COLS = {
+  date: ['tradedate', 'date', 'transactiondate', 'activitydate', 'settledate', 'datadaoperacao', 'datadanegociacao', 'data'],
+  symbol: ['symbol', 'ticker', 'instrument', 'stock', 'simbolo', 'ativo', 'codigo'],
+  action: ['action', 'side', 'type', 'transactiontype', 'activity', 'activitytype', 'buysell', 'operacao', 'tipo', 'tipodeoperacao'],
+  qty: ['quantity', 'qty', 'shares', 'units', 'quantidade', 'qtd'],
+  price: ['price', 'priceusd', 'unitprice', 'tradeprice', 'preco', 'precounitario', 'precomedio'],
+  amount: ['amount', 'netamount', 'total', 'value', 'grossamount', 'proceeds', 'valor', 'valortotal'],
+  fees: ['commission', 'commissions', 'fees', 'fee', 'taxas', 'corretagem'],
+};
+const hasAny = (keys: Set<string>, names: string[]) => names.some((n) => keys.has(n));
+
+function detect(rows: Row[]): 'negociacao' | 'movimentacao' | 'template' | 'us-broker' | null {
   if (!rows.length) return null;
   const keys = new Set(Object.keys(rows[0]).map(norm));
   if (keys.has('codigodenegociacao') && keys.has('tipodemovimentacao')) return 'negociacao';
   if (keys.has('entradasaida') && keys.has('movimentacao') && keys.has('produto')) return 'movimentacao';
+  if (keys.has('data') && keys.has('tipo') && keys.has('ativo') && keys.has('classe')) return 'template';
+  if (hasAny(keys, US_COLS.date) && hasAny(keys, US_COLS.symbol) && hasAny(keys, US_COLS.action) && (hasAny(keys, US_COLS.qty) || hasAny(keys, US_COLS.amount)))
+    return 'us-broker';
   if (keys.has('data') && keys.has('tipo') && keys.has('ativo')) return 'template';
   return null;
+}
+
+/** US exports often use MM/DD/YYYY; Brazilian apps DD/MM/YYYY. Decide from the whole file. */
+function dateOrder(values: unknown[]): 'dmy' | 'mdy' {
+  for (const v of values) {
+    const m = typeof v === 'string' && v.trim().match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
+    if (!m) continue;
+    if (Number(m[1]) > 12) return 'dmy';
+    if (Number(m[2]) > 12) return 'mdy';
+  }
+  return 'mdy';
+}
+function parseDateOrder(v: unknown, order: 'dmy' | 'mdy'): string | null {
+  if (typeof v === 'string') {
+    const m = v.trim().match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
+    if (m) {
+      const [a, b] = order === 'dmy' ? [m[1], m[2]] : [m[2], m[1]];
+      const y = m[3].length === 2 ? '20' + m[3] : m[3];
+      return `${y}-${b.padStart(2, '0')}-${a.padStart(2, '0')}`;
+    }
+  }
+  return parseDate(v);
+}
+/** "$1,234.56", "(12.50)", "-3" → number (US formatting). */
+function usNumber(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (v === null || v === undefined) return NaN;
+  let s = String(v).trim();
+  const neg = /^\(.*\)$/.test(s) || s.startsWith('-');
+  s = s.replace(/[()$\s-]|USD|US\$/gi, '');
+  // "1.234,56" (Brazilian style) vs "1,234.56"
+  if (s.includes(',') && (!s.includes('.') || s.lastIndexOf(',') > s.lastIndexOf('.'))) s = s.replace(/\./g, '').replace(',', '.');
+  else s = s.replace(/,/g, '');
+  const n = Number(s);
+  return neg ? -n : n;
 }
 
 /** Builds an order-stable dedupe key: identical rows in the same file get #1, #2… */
@@ -230,6 +280,58 @@ export function buildPreview(rows: Row[], existing: { assets: Asset[]; transacti
       });
     }
   }
+  if (format === 'us-broker') {
+    const k = keyer('us');
+    const first = getter(rows[0]);
+    const pick = (names: string[]) => names.find((n) => first(n) !== undefined);
+    const col = {
+      date: pick(US_COLS.date)!, symbol: pick(US_COLS.symbol)!, action: pick(US_COLS.action)!,
+      qty: pick(US_COLS.qty), price: pick(US_COLS.price), amount: pick(US_COLS.amount), fees: pick(US_COLS.fees),
+    };
+    const order = dateOrder(rows.map((r) => getter(r)(col.date)));
+    for (const r of rows) {
+      const g = getter(r);
+      const date = parseDateOrder(g(col.date), order);
+      const rawSym = String(g(col.symbol) ?? '').trim().toUpperCase().split(/[\s:]/)[0];
+      const act = norm(String(g(col.action) ?? ''));
+      if (!date || !rawSym) {
+        skip(t('Linha incompleta', 'Incomplete row'));
+        continue;
+      }
+      const type: TxType | null =
+        /^(buy|bought|compra|purchase|b)$|buy|compra/.test(act) ? 'BUY'
+        : /^(sell|sold|venda|s)$|sell|venda/.test(act) ? 'SELL'
+        : /div/.test(act) && !/tax|withh|imposto/.test(act) ? 'DIVIDEND'
+        : null;
+      if (!type) {
+        skip(`${t('Tipo', 'Type')} "${g(col.action)}"`);
+        continue;
+      }
+      let quantity = Math.abs(usNumber(col.qty ? g(col.qty) : NaN));
+      let price = Math.abs(usNumber(col.price ? g(col.price) : NaN));
+      const amount = Math.abs(usNumber(col.amount ? g(col.amount) : NaN));
+      const fees = Math.abs(usNumber(col.fees ? g(col.fees) : 0)) || 0;
+      if (type === 'DIVIDEND') {
+        price = Number.isFinite(amount) ? amount : quantity * price;
+        quantity = 1;
+      } else if (!Number.isFinite(price) && Number.isFinite(amount) && quantity > 0) {
+        price = amount / quantity;
+      }
+      if (!(quantity > 0) || !Number.isFinite(price)) {
+        skip(t('Valor inválido', 'Invalid value'));
+        continue;
+      }
+      const ticker = rawSym.replace(/\.US$/, '');
+      const known = existing.assets.find((a) => a.ticker.toUpperCase() === ticker);
+      const cls: AssetClass = known?.cls ?? (guessClass(ticker) === 'CRIPTO' ? 'CRIPTO' : 'EXTERIOR');
+      const key = k([date, ticker, type, quantity, price]);
+      out.push({
+        key, ticker, cls,
+        tx: { type, date, quantity, price, fees, source: 'csv', importKey: key },
+        duplicate: keys.has(key),
+      });
+    }
+  }
   return { format: format ?? 'desconhecido', rows: out, skipped };
 }
 
@@ -254,6 +356,7 @@ export const FORMAT_LABEL = (): Record<string, string> => ({
   negociacao: 'B3 — Negociação',
   movimentacao: 'B3 — Movimentação',
   template: t('Planilha modelo', 'Template spreadsheet'),
+  'us-broker': t('Corretora dos EUA (Nomad, Avenue…)', 'US broker (Nomad, Avenue…)'),
   desconhecido: t('Formato não reconhecido', 'Unrecognized format'),
 });
 

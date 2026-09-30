@@ -14,14 +14,14 @@ export const MARKET_CLASSES: AssetClass[] = ['ACAO', 'FII', 'ETF', 'BDR', 'CRIPT
 export const isMarketClass = (c: AssetClass) => MARKET_CLASSES.includes(c);
 
 export const CLASS_LABEL: Record<AssetClass, string> = {
-  ACAO: 'Ações',
+  ACAO: 'Ações BR',
   FII: 'FIIs',
   ETF: 'ETFs',
   BDR: 'BDRs',
   RENDA_FIXA: 'Renda fixa',
   FUNDO: 'Fundos',
   CRIPTO: 'Cripto',
-  EXTERIOR: 'Exterior',
+  EXTERIOR: 'Ações EUA',
   OUTRO: 'Outros',
 };
 

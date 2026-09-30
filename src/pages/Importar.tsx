@@ -3,17 +3,19 @@ import { actions, getData, normalize } from '../lib/store';
 import { buildPreview, downloadTemplate, FORMAT_LABEL, materialize, readSheet, type ImportPreview } from '../lib/importers';
 import { exportBackup } from '../lib/exporters';
 import { TX_LABEL } from '../lib/types';
-import { fmtDate, money, qty } from '../lib/format';
+import { fmtCurrency, fmtDate, qty } from '../lib/format';
 import { ClassChip, toast } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { t } from '../lib/i18n';
 import { cloudEnabled } from '../lib/cloud';
+import { fxOnDate } from '../lib/live';
 
 export function Importar() {
   const [preview, setPreview] = useState<(ImportPreview & { file: string }) | null>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [over, setOver] = useState(false);
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState('');
   const input = useRef<HTMLInputElement>(null);
   const backupInput = useRef<HTMLInputElement>(null);
 
@@ -25,7 +27,7 @@ export function Importar() {
       const rows = await readSheet(file);
       const p = buildPreview(rows, getData());
       if (p.format === 'desconhecido') {
-        setErr(t('Não reconheci o formato. Use os extratos de Negociação ou Movimentação da B3, ou a planilha modelo.', "Unrecognized format. Use the B3 Negociação or Movimentação statements, or the template spreadsheet."));
+        setErr(t('Não reconheci o formato. Use os extratos da B3, o CSV da sua corretora dos EUA (Nomad, Avenue…) ou a planilha modelo.', "Unrecognized format. Use the B3 statements, your US broker's CSV (Nomad, Avenue…) or the template spreadsheet."));
         return;
       }
       setPreview({ ...p, file: file.name });
@@ -35,9 +37,25 @@ export function Importar() {
     }
   }
 
-  function confirm() {
-    if (!preview) return;
+  async function confirm() {
+    if (!preview || busy) return;
     const chosen = preview.rows.filter((r) => sel.has(r.key));
+    // Dollar trades: store the PTAX-like rate of each trade date (needed for cost in reais and IR).
+    const usd = chosen.filter((r) => r.cls === 'EXTERIOR' && r.tx.fxRate === undefined);
+    const dates = [...new Set(usd.map((r) => r.tx.date))];
+    if (dates.length) {
+      const rates = new Map<string, number>();
+      for (let i = 0; i < dates.length; i++) {
+        setBusy(t(`Buscando dólar do dia… ${i + 1}/${dates.length}`, `Fetching dollar rates… ${i + 1}/${dates.length}`));
+        const v = await fxOnDate('USD', dates[i]);
+        if (v) rates.set(dates[i], v);
+      }
+      setBusy('');
+      for (const r of usd) {
+        const v = rates.get(r.tx.date) ?? getData().settings.fx?.USD;
+        if (v) r.tx = { ...r.tx, fxRate: v };
+      }
+    }
     const { created, txs } = materialize(chosen, getData().assets);
     actions.addTransactions(txs, created);
     toast(t(`${txs.length} lançamento(s) importado(s)${created.length ? `, ${created.length} ativo(s) novo(s)` : ''}`, `${txs.length} transaction(s) imported${created.length ? `, ${created.length} new asset(s)` : ''}`), { undo: true });
@@ -56,7 +74,7 @@ export function Importar() {
           </div>
           <div className="spacer" />
           <button className="btn" onClick={() => setPreview(null)}>{t('Cancelar', 'Cancel')}</button>
-          <button className="btn primary" disabled={!sel.size} onClick={confirm}><Icon name="check" size={16} /> {t('Importar', 'Import')} {sel.size}</button>
+          <button className="btn primary" disabled={!sel.size || !!busy} onClick={confirm}>{busy ? <><span className="spinner" /> {busy}</> : <><Icon name="check" size={16} /> {t('Importar', 'Import')} {sel.size}</>}</button>
         </div>
         {skipped.length > 0 && (
           <div className="notice info">
@@ -85,8 +103,8 @@ export function Importar() {
                     <td className="text-2">{fmtDate(r.tx.date)}</td>
                     <td>{TX_LABEL[r.tx.type]}</td>
                     <td><div className="row"><span className="ticker">{r.ticker}</span><ClassChip cls={r.cls} /></div></td>
-                    <td className="num">{r.tx.quantity !== 1 ? qty(r.tx.quantity) : ''}</td>
-                    <td className="num">{money(r.tx.price, { always: true })}</td>
+                    <td className="num">{r.tx.quantity !== 1 || r.tx.type === 'BUY' || r.tx.type === 'SELL' ? qty(r.tx.quantity) : ''}</td>
+                    <td className="num">{fmtCurrency(r.tx.price, r.cls === 'EXTERIOR' ? 'USD' : 'BRL', { always: true })}</td>
                     <td className="text-2">{r.tx.institution}</td>
                     <td className="small" style={{ color: 'var(--warn-ink)' }}>{r.duplicate ? t('já importado', 'already imported') : r.warning}</td>
                   </tr>
@@ -110,7 +128,7 @@ export function Importar() {
       >
         <Icon name="upload" size={28} />
         <h3 style={{ margin: '8px 0 4px' }}>{t('Arraste um arquivo aqui ou clique para escolher', 'Drop a file here or click to choose')}</h3>
-        <div className="muted">{t('Excel (.xlsx) ou CSV — extratos da B3 ou planilha modelo. Você revisa tudo antes de importar.', 'Excel (.xlsx) or CSV — B3 statements or the template. You review everything before importing.')}</div>
+        <div className="muted">{t('Excel (.xlsx) ou CSV — B3, Nomad/Avenue ou planilha modelo. Você revisa tudo antes de importar.', 'Excel (.xlsx) or CSV — B3, Nomad/Avenue or the template. You review everything before importing.')}</div>
         <input ref={input} type="file" accept=".xlsx,.xls,.csv" hidden onChange={(e) => { handle(e.target.files); e.target.value = ''; }} />
       </div>
       {err && <div className="notice"><Icon name="alert" /><span>{err}</span></div>}
@@ -127,6 +145,10 @@ export function Importar() {
           <p className="muted small">{t('A B3 não informa corretagem nem taxas; se quiser que entrem no preço médio, edite o lançamento depois. CDBs, LCIs e fundos de banco não passam pela B3: adicione pelo formulário.', "B3 doesn't include brokerage fees; edit the transaction later if you want them in the average price. Bank CDBs, LCIs and funds don't go through B3: add them with the form.")}</p>
         </div>
         <div className="stack">
+          <div className="card card-pad">
+            <h2 style={{ fontSize: 15, marginTop: 0 }}>{t('Corretora dos EUA (Nomad, Avenue…)', 'US broker (Nomad, Avenue…)')}</h2>
+            <p className="text-2" style={{ marginTop: 0 }}>{t('A B3 não vê o que você comprou lá fora. No app da corretora, exporte o histórico de transações/extrato em CSV ou Excel e arraste aqui. Compras, vendas e dividendos entram em dólar, com a cotação do dólar de cada dia buscada automaticamente.', "B3 can't see what you bought abroad. In your broker's app, export the transaction history/statement as CSV or Excel and drop it here. Buys, sells and dividends come in as dollars, with each day's dollar rate fetched automatically.")}</p>
+          </div>
           <div className="card card-pad">
             <h2 style={{ fontSize: 15, marginTop: 0 }}>{t('Planilha modelo', 'Template spreadsheet')}</h2>
             <p className="text-2" style={{ marginTop: 0 }}>{t('Tem um histórico em planilha? Copie para o modelo (colunas data, tipo, ativo, classe, quantidade, preço, taxas, instituição) e importe.', 'Have your history in a spreadsheet? Copy it into the template (columns data, tipo, ativo, classe, quantidade, preco, taxas, instituicao) and import it.')}</p>

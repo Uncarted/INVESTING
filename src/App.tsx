@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { actions, getData, useData } from './lib/store';
+import { actions, useData } from './lib/store';
 import { setHideValues } from './lib/format';
-import { exportWorkbook } from './lib/exporters';
 import { flushLive, startLive } from './lib/live';
-import { detectLang, getLang, setLang, t } from './lib/i18n';
+import { detectLang, setLang, t } from './lib/i18n';
 import { cloudEnabled, signOut, useCloud } from './lib/cloud';
 import { AuthScreen, Splash } from './components/AuthScreen';
 import { Icon } from './components/Icon';
@@ -162,27 +161,12 @@ export function App() {
                 {(['lancamentos', 'proventos', 'ir'] as PanelId[]).map((id) => (
                   <MenuItem key={id} icon={panelMeta(id).icon} title={panelMeta(id).title} sub={panelMeta(id).sub} onClick={() => open(id)} />
                 ))}
-                <div className="menu-sep" />
-                <MenuItem icon="upload" title={t('Importar da B3', 'Import from B3')} sub={t('Negociação e movimentação, todas as corretoras', 'Trades and movements, all brokers at once')} onClick={() => open('importar')} />
-                <MenuItem icon="download" title={t('Baixar planilha', 'Download spreadsheet')} sub={t('Posições e lançamentos em Excel', 'Positions and transactions in Excel')} onClick={() => { setMenu(false); exportWorkbook(getData()); }} />
-                <MenuItem
-                  icon="file"
-                  title="Backup"
-                  sub={needsBackup ? t('Faz tempo que você não salva um backup', "You haven't saved a backup in a while") : t('Salvar ou restaurar seus dados', 'Save or restore your data')}
-                  onClick={() => open('importar')}
-                  warn={needsBackup}
-                />
+                <MenuItem icon="upload" title={t('Importar', 'Import')} sub={t('B3, corretoras dos EUA e planilhas', 'B3, US brokers and spreadsheets')} onClick={() => open('importar')} warn={needsBackup} />
                 <div className="menu-sep" />
                 <MenuItem
                   icon={theme === 'dark' ? 'sun' : 'moon'}
                   title={theme === 'dark' ? t('Modo claro', 'Light mode') : t('Modo escuro', 'Dark mode')}
                   onClick={() => actions.updateSettings({ theme: theme === 'dark' ? 'light' : 'dark' })}
-                />
-                <MenuItem
-                  icon="globe"
-                  title={getLang() === 'en' ? 'Português' : 'English'}
-                  sub={getLang() === 'en' ? 'Mudar o idioma para português' : 'Switch the language to English'}
-                  onClick={() => actions.updateSettings({ language: getLang() === 'en' ? 'pt' : 'en' })}
                 />
                 <MenuItem icon="settings" title={t('Ajustes', 'Settings')} onClick={() => open('config')} />
               </div>

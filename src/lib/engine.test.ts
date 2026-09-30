@@ -162,3 +162,59 @@ describe('busca de tickers', () => {
     expect(searchDirectory('itau').map((t) => t.symbol)).toContain('ITUB4');
   });
 });
+
+describe('IR de uma venda', () => {
+  it('estimates exempt, taxable, FII and foreign sales', async () => {
+    const { estimateSaleTax } = await import('./tax');
+    const acao = asset('b', 'BBAS3', 'ACAO');
+    const fii = asset('f', 'HGLG11', 'FII');
+    const us = asset('u', 'TTWO', 'EXTERIOR', { currency: 'USD' });
+    const txs = [
+      tx('b', 'BUY', '2025-01-02', 1000, 20),
+      tx('f', 'BUY', '2025-01-02', 100, 100),
+      tx('u', 'BUY', '2025-01-02', 10, 150, { fxRate: 5 }),
+    ];
+    const all = [acao, fii, us];
+    const sell = (id: string, date: string, q: number, p: number, extra: Partial<Transaction> = {}) => tx(id, 'SELL', date, q, p, extra);
+
+    // 500 × 30 = R$ 15k sold in the month → exempt
+    const e1 = estimateSaleTax(all, txs, settings, sell('b', '2025-03-10', 500, 30))!;
+    expect(e1.kind).toBe('exempt-stocks');
+    expect(e1.tax).toBe(0);
+    expect(e1.gain).toBe(5000);
+
+    // 1000 × 30 = R$ 30k → 15% of R$ 10k
+    const e2 = estimateSaleTax(all, txs, settings, sell('b', '2025-03-10', 1000, 30))!;
+    expect(e2.kind).toBe('monthly');
+    expect(e2.tax).toBeCloseTo(1500, 6);
+    expect(e2.dueDate).toBe('2025-04-30');
+
+    // FII: 20% with no exemption
+    const e3 = estimateSaleTax(all, txs, settings, sell('f', '2025-03-10', 100, 110))!;
+    expect(e3.tax).toBeCloseTo(200, 6);
+
+    // Foreign: 15% of the gain in BRL, no exemption, paid yearly
+    const e4 = estimateSaleTax(all, txs, settings, sell('u', '2025-03-10', 10, 200, { fxRate: 5 }))!;
+    expect(e4.kind).toBe('annual');
+    expect(e4.tax).toBeCloseTo(0.15 * (10 * 200 * 5 - 10 * 150 * 5), 6);
+  });
+});
+
+describe('importar corretora dos EUA', () => {
+  it('reconhece compras, vendas e dividendos em dólar', async () => {
+    const { buildPreview } = await import('./importers');
+    const rows = [
+      { Date: '03/15/2024', Symbol: 'TTWO', Action: 'Buy', Quantity: '2', Price: '$150.25', Amount: '-$300.50', Fees: '0' },
+      { Date: '04/20/2024', Symbol: 'TTWO', Action: 'Sell', Quantity: '1', Price: '160', Amount: '160', Fees: '0' },
+      { Date: '05/02/2024', Symbol: 'AAPL', Action: 'Dividend', Quantity: '', Price: '', Amount: '1.20', Fees: '' },
+      { Date: '05/02/2024', Symbol: 'AAPL', Action: 'Dividend Tax', Quantity: '', Price: '', Amount: '-0.36', Fees: '' },
+    ];
+    const p = buildPreview(rows, { assets: [], transactions: [] });
+    expect(p.format).toBe('us-broker');
+    expect(p.rows.map((r) => [r.tx.type, r.tx.date, r.ticker, r.cls, r.tx.quantity, r.tx.price])).toEqual([
+      ['BUY', '2024-03-15', 'TTWO', 'EXTERIOR', 2, 150.25],
+      ['SELL', '2024-04-20', 'TTWO', 'EXTERIOR', 1, 160],
+      ['DIVIDEND', '2024-05-02', 'AAPL', 'EXTERIOR', 1, 1.2],
+    ]);
+  });
+});
