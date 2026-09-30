@@ -154,6 +154,8 @@ export interface Settings {
   livePrices: boolean;
   theme: 'system' | 'light' | 'dark';
   hideValues: boolean;
+  /** UI language; undefined = follow the browser. */
+  language?: 'pt' | 'en';
   lastBackupAt?: string;
 }
 

@@ -29,6 +29,7 @@ const PATHS: Record<string, string> = {
   back: 'M15 18l-6-6 6-6',
   grid: 'M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z',
   chart: 'M4 20V10m6 10V4m6 16v-7m4 7H2',
+  globe: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z',
 };
 
 export function Icon({ name, size = 18 }: { name: keyof typeof PATHS | string; size?: number }) {

@@ -3,6 +3,7 @@ import { actions, getData, useData } from './lib/store';
 import { setHideValues } from './lib/format';
 import { exportWorkbook } from './lib/exporters';
 import { flushLive, startLive } from './lib/live';
+import { detectLang, getLang, setLang, t } from './lib/i18n';
 import { cloudEnabled, signOut, useCloud } from './lib/cloud';
 import { AuthScreen, Splash } from './components/AuthScreen';
 import { Icon } from './components/Icon';
@@ -16,18 +17,20 @@ import { ImpostoRenda } from './pages/ImpostoRenda';
 import { Importar } from './pages/Importar';
 import { Configuracoes } from './pages/Configuracoes';
 
-const PANELS = {
-  lancamentos: { title: 'Lançamentos', sub: 'Tudo o que você comprou, vendeu, aplicou e resgatou', icon: 'list' },
-  proventos: { title: 'Proventos', sub: 'Dividendos, JCP e rendimentos recebidos', icon: 'coins' },
-  ir: { title: 'Imposto de Renda', sub: 'Bens e direitos, DARFs e rendimentos — pronto para declarar', icon: 'receipt' },
-  importar: { title: 'Importar & backup', sub: 'Extratos da B3, planilhas e cópia de segurança', icon: 'upload' },
-  config: { title: 'Ajustes', sub: 'Taxas, cotações, aparência e dados', icon: 'settings' },
-} as const;
-type PanelId = keyof typeof PANELS;
+const PANEL_IDS = ['lancamentos', 'proventos', 'ir', 'importar', 'config'] as const;
+type PanelId = (typeof PANEL_IDS)[number];
+const panelMeta = (id: PanelId) =>
+  ({
+    lancamentos: { title: t('Lançamentos', 'Transactions'), sub: t('Tudo o que você comprou, vendeu, aplicou e resgatou', 'Everything you bought, sold, invested and redeemed'), icon: 'list' },
+    proventos: { title: t('Proventos', 'Dividends'), sub: t('Dividendos, JCP e rendimentos recebidos', 'Dividends, JCP and income received'), icon: 'coins' },
+    ir: { title: t('Imposto de Renda', 'Income tax (IR)'), sub: t('Bens e direitos, DARFs e rendimentos — pronto para declarar', 'Bens e Direitos, DARFs and income — ready for your Brazilian tax return'), icon: 'receipt' },
+    importar: { title: t('Importar & backup', 'Import & backup'), sub: t('Extratos da B3, planilhas e cópia de segurança', 'B3 statements, spreadsheets and backups'), icon: 'upload' },
+    config: { title: t('Ajustes', 'Settings'), sub: t('Taxas, cotações, aparência e dados', 'Rates, quotes, appearance and data'), icon: 'settings' },
+  })[id];
 
 const readHash = (): PanelId | null => {
   const h = location.hash.replace(/^#\/?/, '');
-  return h in PANELS ? (h as PanelId) : null;
+  return (PANEL_IDS as readonly string[]).includes(h) ? (h as PanelId) : null;
 };
 
 function useSystemDark() {
@@ -52,6 +55,7 @@ export function App() {
   const systemDark = useSystemDark();
 
   setHideValues(data.settings.hideValues);
+  setLang(data.settings.language ?? detectLang());
 
   useEffect(() => {
     const onHash = () => setPanel(readHash());
@@ -116,11 +120,11 @@ export function App() {
 
   const topbarActions = (
     <>
-      <button className="round-btn" title={hidden ? 'Mostrar valores' : 'Ocultar valores'} onClick={() => actions.updateSettings({ hideValues: !hidden })}>
+      <button className="round-btn" title={hidden ? t('Mostrar valores', 'Show values') : t('Ocultar valores', 'Hide values')} onClick={() => actions.updateSettings({ hideValues: !hidden })}>
         <Icon name={hidden ? 'eyeOff' : 'eye'} size={17} />
       </button>
-      <button className="pill-btn" onClick={() => setForm({})} title="Atalho: N">
-        <Icon name="plus" size={17} /> <span className="lbl">Adicionar</span>
+      <button className="pill-btn" onClick={() => setForm({})} title={t('Atalho: N', 'Shortcut: N')}>
+        <Icon name="plus" size={17} /> <span className="lbl">{t('Adicionar', 'Add')}</span>
       </button>
     </>
   );
@@ -150,31 +154,37 @@ export function App() {
                         <b>{cloud.session.user.email}</b>
                         <span className="sub"><SyncLabel status={cloud.sync} /></span>
                       </span>
-                      <button className="btn sm" onClick={() => { setMenu(false); void signOut(); }}>Sair</button>
+                      <button className="btn sm" onClick={() => { setMenu(false); void signOut(); }}>{t('Sair', 'Sign out')}</button>
                     </div>
                     <div className="menu-sep" />
                   </>
                 )}
                 {(['lancamentos', 'proventos', 'ir'] as PanelId[]).map((id) => (
-                  <MenuItem key={id} icon={PANELS[id].icon} title={PANELS[id].title} sub={PANELS[id].sub} onClick={() => open(id)} />
+                  <MenuItem key={id} icon={panelMeta(id).icon} title={panelMeta(id).title} sub={panelMeta(id).sub} onClick={() => open(id)} />
                 ))}
                 <div className="menu-sep" />
-                <MenuItem icon="upload" title="Importar da B3" sub="Negociação e movimentação, todas as corretoras" onClick={() => open('importar')} />
-                <MenuItem icon="download" title="Baixar planilha" sub="Posições e lançamentos em Excel" onClick={() => { setMenu(false); exportWorkbook(getData()); }} />
+                <MenuItem icon="upload" title={t('Importar da B3', 'Import from B3')} sub={t('Negociação e movimentação, todas as corretoras', 'Trades and movements, all brokers at once')} onClick={() => open('importar')} />
+                <MenuItem icon="download" title={t('Baixar planilha', 'Download spreadsheet')} sub={t('Posições e lançamentos em Excel', 'Positions and transactions in Excel')} onClick={() => { setMenu(false); exportWorkbook(getData()); }} />
                 <MenuItem
                   icon="file"
                   title="Backup"
-                  sub={needsBackup ? 'Faz tempo que você não salva um backup' : 'Salvar ou restaurar seus dados'}
+                  sub={needsBackup ? t('Faz tempo que você não salva um backup', "You haven't saved a backup in a while") : t('Salvar ou restaurar seus dados', 'Save or restore your data')}
                   onClick={() => open('importar')}
                   warn={needsBackup}
                 />
                 <div className="menu-sep" />
                 <MenuItem
                   icon={theme === 'dark' ? 'sun' : 'moon'}
-                  title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+                  title={theme === 'dark' ? t('Modo claro', 'Light mode') : t('Modo escuro', 'Dark mode')}
                   onClick={() => actions.updateSettings({ theme: theme === 'dark' ? 'light' : 'dark' })}
                 />
-                <MenuItem icon="settings" title="Ajustes" onClick={() => open('config')} />
+                <MenuItem
+                  icon="globe"
+                  title={getLang() === 'en' ? 'Português' : 'English'}
+                  sub={getLang() === 'en' ? 'Mudar o idioma para português' : 'Switch the language to English'}
+                  onClick={() => actions.updateSettings({ language: getLang() === 'en' ? 'pt' : 'en' })}
+                />
+                <MenuItem icon="settings" title={t('Ajustes', 'Settings')} onClick={() => open('config')} />
               </div>
             )}
           </div>
@@ -187,10 +197,10 @@ export function App() {
         <div className="panel">
           <div className="panel-inner">
             <header className="panel-head">
-              <button className="round-btn" onClick={close} aria-label="Voltar"><Icon name="back" /></button>
+              <button className="round-btn" onClick={close} aria-label={t('Voltar', 'Back')}><Icon name="back" /></button>
               <div>
-                <h1>{PANELS[panel].title}</h1>
-                <p>{PANELS[panel].sub}</p>
+                <h1>{panelMeta(panel).title}</h1>
+                <p>{panelMeta(panel).sub}</p>
               </div>
               <div className="spacer" />
               {topbarActions}
@@ -227,11 +237,11 @@ function MenuItem({ icon, title, sub, onClick, warn }: { icon: string; title: st
 function SyncLabel({ status }: { status: string }) {
   const map: Record<string, [string, string]> = {
     idle: ['', 'var(--muted)'],
-    loading: ['Carregando…', 'var(--muted)'],
-    saving: ['Salvando…', 'var(--muted)'],
-    saved: ['✓ Salvo na nuvem', 'var(--pos)'],
-    error: ['Erro ao salvar — tentando de novo', 'var(--neg)'],
-    offline: ['Sem internet — salvo neste computador', 'var(--warn-ink)'],
+    loading: [t('Carregando…', 'Loading…'), 'var(--muted)'],
+    saving: [t('Salvando…', 'Saving…'), 'var(--muted)'],
+    saved: [t('✓ Salvo na nuvem', '✓ Saved to the cloud'), 'var(--pos)'],
+    error: [t('Erro ao salvar — tentando de novo', 'Save failed — retrying'), 'var(--neg)'],
+    offline: [t('Sem internet — salvo neste computador', 'Offline — saved on this computer'), 'var(--warn-ink)'],
   };
   const [label, color] = map[status] ?? map.idle;
   return <span style={{ color }}>{label}</span>;

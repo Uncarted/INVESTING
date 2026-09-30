@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { money, moneyCompact, percent, fmtMonth } from '../lib/format';
+import { t } from '../lib/i18n';
 
 export interface Slice {
   key: string;
@@ -14,10 +15,10 @@ export function Allocation({ slices, onSelect }: { slices: Slice[]; onSelect?: (
   const sorted = [...slices].filter((s) => s.value > 0).sort((a, b) => b.value - a.value);
   const max = sorted[0]?.value ?? 1;
   const [hover, setHover] = useState<string | null>(null);
-  if (!total) return <div className="muted small">Sem dados.</div>;
+  if (!total) return <div className="muted small">{t('Sem dados.', 'No data.')}</div>;
   return (
     <div>
-      <div className="stackbar" role="img" aria-label="Composição">
+      <div className="stackbar" role="img" aria-label={t('Composição', 'Composition')}>
         {sorted.map((s) => (
           <div
             key={s.key}
@@ -70,7 +71,7 @@ export function AreaChart({ data, height = 220, compact }: { data: { month: stri
     return { ticks, x, y, path, area };
   }, [data, H]);
 
-  if (data.length < 2) return <div className="muted small" style={{ padding: 24 }}>Adicione lançamentos para ver a evolução.</div>;
+  if (data.length < 2) return <div className="muted small" style={{ padding: 24 }}>{t('Adicione lançamentos para ver a evolução.', 'Add transactions to see the history.')}</div>;
 
   const labelEvery = Math.max(1, Math.ceil(data.length / (compact ? 5 : 8)));
   const onMove = (e: React.MouseEvent) => {
@@ -82,7 +83,7 @@ export function AreaChart({ data, height = 220, compact }: { data: { month: stri
   const h = hover !== null ? data[hover] : null;
   return (
     <div className={'chart' + (compact ? ' compact' : '')} ref={ref} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Evolução do valor aplicado">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t('Evolução do valor aplicado', 'Amount invested over time')}>
         <defs>
           <linearGradient id="areaFill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="var(--line)" stopOpacity="0.28" />
@@ -139,7 +140,7 @@ export function MonthBars({ data, height = 180 }: { data: { label: string; value
   const y = (v: number) => pad.t + (1 - v / top) * (H - pad.t - pad.b);
   return (
     <div className="chart" onMouseLeave={() => setHover(null)}>
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Proventos por mês">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t('Proventos por mês', 'Dividends per month')}>
         {ticks.map((t) => (
           <g key={t}>
             <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} stroke={t === 0 ? 'var(--axis)' : 'var(--grid)'} />

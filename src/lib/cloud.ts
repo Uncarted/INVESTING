@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { LOCAL_KEY, applyRemote, getData, onEdit, peekStorage, switchStorage } from './store';
 import type { Data } from './types';
+import { t } from './i18n';
 
 /**
  * Accounts + cloud database (Supabase).
@@ -111,12 +112,12 @@ export async function signOut() {
 
 function translate(msg: string) {
   const m = msg.toLowerCase();
-  if (m.includes('invalid login')) return 'Email ou senha incorretos.';
-  if (m.includes('email not confirmed')) return 'Confirme seu email antes de entrar (veja sua caixa de entrada).';
-  if (m.includes('already registered')) return 'Esse email já tem conta — use “Entrar”.';
-  if (m.includes('password should be')) return 'A senha precisa ter pelo menos 6 caracteres.';
-  if (m.includes('provider is not enabled')) return 'Login com Google ainda não foi ativado no Supabase.';
-  if (m.includes('rate limit')) return 'Muitas tentativas. Espere um pouco e tente de novo.';
+  if (m.includes('invalid login')) return t('Email ou senha incorretos.', 'Wrong email or password.');
+  if (m.includes('email not confirmed')) return t('Confirme seu email antes de entrar (veja sua caixa de entrada).', 'Confirm your email before signing in (check your inbox).');
+  if (m.includes('already registered')) return t('Esse email já tem conta — use “Entrar”.', 'This email already has an account — use “Sign in”.');
+  if (m.includes('password should be')) return t('A senha precisa ter pelo menos 6 caracteres.', 'The password needs at least 6 characters.');
+  if (m.includes('provider is not enabled')) return t('Login com Google ainda não foi ativado no Supabase.', "Google sign-in isn't enabled in Supabase yet.");
+  if (m.includes('rate limit')) return t('Muitas tentativas. Espere um pouco e tente de novo.', 'Too many attempts. Wait a bit and try again.');
   return msg;
 }
 

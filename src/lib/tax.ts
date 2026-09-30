@@ -1,7 +1,7 @@
 import type { Asset, AssetClass, Settings, Transaction } from './types';
-import { FIXED_KIND_LABEL, isMarketClass } from './types';
+import { isMarketClass } from './types';
 import { computePositions, groupTx, type Position, type Sale } from './portfolio';
-import { money, qty, fmtDate } from './format';
+import { FIXED_KIND_PT, t as tr } from './i18n';
 
 export const ACOES_EXEMPTION = 20000;
 export const CRYPTO_EXEMPTION = 35000;
@@ -144,8 +144,8 @@ export function computeTaxYear(sales: Sale[], year: number): TaxYear {
           irrf, irrfUsed, totalTax, darf: r2(darf), darfCarry,
           cryptoSales, cryptoGain, cryptoExempt, cryptoTax, dayTrades, oversold,
         });
-        if (dayTrades) warnings.push(`${ym}: ${dayTrades} venda(s) no mesmo dia de uma compra (possível day trade, tributado a 20% e apurado separadamente). O cálculo aqui trata tudo como operação comum — confira.`);
-        if (oversold) warnings.push(`${ym}: venda maior do que a quantidade em carteira. Falta algum lançamento de compra, bonificação ou desdobro?`);
+        if (dayTrades) warnings.push(tr(`${ym}: ${dayTrades} venda(s) no mesmo dia de uma compra (possível day trade, tributado a 20% e apurado separadamente). O cálculo aqui trata tudo como operação comum — confira.`, `${ym}: ${dayTrades} sale(s) on the same day as a buy (possible day trade, taxed at 20% and calculated separately). This report treats everything as regular trades — please check.`));
+        if (oversold) warnings.push(tr(`${ym}: venda maior do que a quantidade em carteira. Falta algum lançamento de compra, bonificação ou desdobro?`, `${ym}: sold more than you held. Is a buy, bonus or split missing?`));
       }
     }
     if (y === year) {
@@ -217,6 +217,13 @@ function irCode(a: Asset): { group: string; code: string; label: string } {
   }
 }
 
+// The Discriminação goes on the Brazilian tax return: always Portuguese, pt-BR formatting.
+const ptBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const ptNum = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 8 });
+const ptMoney = (v: number) => ptBRL.format(v);
+const ptQty = (v: number) => ptNum.format(v);
+const ptDate = (iso?: string) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '');
+
 function describe(a: Asset, p: Position): string {
   const inst = a.institution ? `, custodiado(a) em ${a.institution}` : '';
   const cnpj = a.cnpj ? ` CNPJ ${a.cnpj}.` : '';
@@ -224,14 +231,14 @@ function describe(a: Asset, p: Position): string {
   if (isMarketClass(a.cls)) {
     const unit =
       a.cls === 'ACAO' || a.cls === 'EXTERIOR' ? 'ações' : a.cls === 'CRIPTO' ? 'unidades de' : 'cotas de';
-    return `${qty(p.quantity)} ${unit} ${a.ticker}${name}, preço médio de ${money(p.avgPrice, { always: true })}${inst}.${cnpj}`;
+    return `${ptQty(p.quantity)} ${unit} ${a.ticker}${name}, preço médio de ${ptMoney(p.avgPrice)}${inst}.${cnpj}`;
   }
   const f = a.fixed;
-  const kindLabel = f ? FIXED_KIND_LABEL[f.kind] : '';
+  const kindLabel = f ? FIXED_KIND_PT[f.kind] : '';
   const kind = kindLabel && !a.ticker.toLowerCase().startsWith(kindLabel.toLowerCase()) ? kindLabel + ' ' : '';
   const issuer = f?.issuer ? ` emitido por ${f.issuer}` : '';
-  const venc = f?.maturity ? `, vencimento em ${fmtDate(f.maturity)}` : '';
-  return `${kind}${a.ticker}${issuer}${venc}. Valor aplicado ${money(p.cost, { always: true })}${inst}.${cnpj}`;
+  const venc = f?.maturity ? `, vencimento em ${ptDate(f.maturity)}` : '';
+  return `${kind}${a.ticker}${issuer}${venc}. Valor aplicado ${ptMoney(p.cost)}${inst}.${cnpj}`;
 }
 
 export function bensEDireitos(

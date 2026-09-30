@@ -4,6 +4,7 @@ import { CLASS_LABEL, isMarketClass } from './types';
 import { guessClass, normalizeTicker } from './classify';
 import { parseDate, parseNumber } from './format';
 import { newAsset } from './store';
+import { t } from './i18n';
 
 export type Row = Record<string, unknown>;
 
@@ -85,16 +86,16 @@ export function buildPreview(rows: Row[], existing: { assets: Asset[]; transacti
       const q = parseNumber(g('Quantidade'));
       const price = parseNumber(g('Preço'));
       if (!date || !code || !Number.isFinite(q) || !Number.isFinite(price)) {
-        skip('Linha incompleta');
+        skip(t('Linha incompleta', 'Incomplete row'));
         continue;
       }
       if (mercado.includes('opç') || mercado.includes('opc') || mercado.includes('termo') || mercado.includes('futuro')) {
-        skip('Opções/termo/futuro (não suportado)');
+        skip(t('Opções/termo/futuro (não suportado)', 'Options/forwards/futures (not supported)'));
         continue;
       }
       const type: TxType | null = kind.startsWith('compra') ? 'BUY' : kind.startsWith('venda') ? 'SELL' : null;
       if (!type) {
-        skip(`Tipo "${kind}"`);
+        skip(`${t('Tipo', 'Type')} "${kind}"`);
         continue;
       }
       const ticker = normalizeTicker(code);
@@ -120,7 +121,7 @@ export function buildPreview(rows: Row[], existing: { assets: Asset[]; transacti
       const unit = parseNumber(g('Preço unitário'));
       const total = parseNumber(g('Valor da Operação'));
       if (!date || !produto) {
-        skip('Linha incompleta');
+        skip(t('Linha incompleta', 'Incomplete row'));
         continue;
       }
       const [codePart, ...nameParts] = produto.split(' - ');
@@ -147,7 +148,7 @@ export function buildPreview(rows: Row[], existing: { assets: Asset[]; transacti
         type = 'BONUS';
         quantity = q;
         price = Number.isFinite(unit) ? unit : 0;
-        if (!price) warning = 'Informe o custo atribuído pela empresa (fato relevante)';
+        if (!price) warning = t('Informe o custo atribuído pela empresa (fato relevante)', "Enter the unit cost the company assigned (see its announcement)");
       } else if (isTesouro && (movN === 'compra' || movN === 'venda' || movN === 'resgate' || movN === 'vencimento')) {
         type = movN === 'compra' ? 'BUY' : 'SELL';
         closes = movN === 'resgate' || movN === 'vencimento' ? true : undefined;
@@ -155,11 +156,11 @@ export function buildPreview(rows: Row[], existing: { assets: Asset[]; transacti
         cls = 'RENDA_FIXA';
         rowTicker = produto.trim();
       } else {
-        skip(mov || 'Sem tipo');
+        skip(mov || t('Sem tipo', 'No type'));
         continue;
       }
       if (!Number.isFinite(price) || !Number.isFinite(quantity)) {
-        skip('Valor inválido');
+        skip(t('Valor inválido', 'Invalid value'));
         continue;
       }
       const key = k([date, rowTicker, mov, q, total, inst]);
@@ -214,7 +215,7 @@ export function buildPreview(rows: Row[], existing: { assets: Asset[]; transacti
         quantity = 1;
       }
       if (!Number.isFinite(quantity) || !Number.isFinite(price)) {
-        skip('Valor inválido');
+        skip(t('Valor inválido', 'Invalid value'));
         continue;
       }
       const inst = String(g('instituicao', 'instituição', 'corretora') ?? '').trim();
@@ -249,12 +250,12 @@ export function prettyInstitution(raw: string): string | undefined {
   return s;
 }
 
-export const FORMAT_LABEL: Record<string, string> = {
+export const FORMAT_LABEL = (): Record<string, string> => ({
   negociacao: 'B3 — Negociação',
   movimentacao: 'B3 — Movimentação',
-  template: 'Planilha modelo',
-  desconhecido: 'Formato não reconhecido',
-};
+  template: t('Planilha modelo', 'Template spreadsheet'),
+  desconhecido: t('Formato não reconhecido', 'Unrecognized format'),
+});
 
 /** Turns selected preview rows into transactions + any new assets needed. */
 export function materialize(rows: PreviewRow[], assets: Asset[]) {

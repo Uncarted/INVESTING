@@ -3,6 +3,7 @@ import { actions, useData } from '../lib/store';
 import { TX_LABEL, isMarketClass, type TxType } from '../lib/types';
 import { fmtCurrency, fmtDate, money, qty } from '../lib/format';
 import { currencyOf } from '../lib/portfolio';
+import { t as tr } from '../lib/i18n';
 import { ClassChip, Empty, toast } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { exportCSV, exportWorkbook } from '../lib/exporters';
@@ -42,14 +43,14 @@ export function Lancamentos({ onEdit }: { onEdit: (i: FormInit) => void }) {
       <div className="row wrap">
         <div className="search" style={{ width: 240 }}>
           <Icon name="search" size={16} />
-          <input className="input" placeholder="Buscar" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="input" placeholder={tr('Buscar', 'Search')} value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <select className="input" style={{ width: 170 }} value={type} onChange={(e) => setType(e.target.value as TxType | 'ALL')}>
-          <option value="ALL">Todos os tipos</option>
+          <option value="ALL">{tr('Todos os tipos', 'All types')}</option>
           {Object.entries(TX_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </select>
         <select className="input" style={{ width: 120 }} value={year} onChange={(e) => setYear(e.target.value)}>
-          <option value="ALL">Todos os anos</option>
+          <option value="ALL">{tr('Todos os anos', 'All years')}</option>
           {years.map((y) => <option key={y}>{y}</option>)}
         </select>
         <div className="spacer" />
@@ -58,11 +59,11 @@ export function Lancamentos({ onEdit }: { onEdit: (i: FormInit) => void }) {
             className="btn danger"
             onClick={() => {
               actions.deleteTransactions([...sel]);
-              toast(`${sel.size} lançamento(s) excluído(s)`, { undo: true });
+              toast(tr(`${sel.size} lançamento(s) excluído(s)`, `${sel.size} transaction(s) deleted`), { undo: true });
               setSel(new Set());
             }}
           >
-            <Icon name="trash" size={16} /> Excluir {sel.size}
+            <Icon name="trash" size={16} /> {tr('Excluir', 'Delete')} {sel.size}
           </button>
         )}
         <button className="btn" onClick={() => exportCSV(data)}><Icon name="download" size={16} /> CSV</button>
@@ -71,21 +72,21 @@ export function Lancamentos({ onEdit }: { onEdit: (i: FormInit) => void }) {
 
       <div className="card">
         {!rows.length ? (
-          <Empty title="Nenhum lançamento">{data.transactions.length ? 'Ajuste os filtros.' : 'Use o botão “Novo lançamento”.'}</Empty>
+          <Empty title={tr('Nenhum lançamento', 'No transactions')}>{data.transactions.length ? tr('Ajuste os filtros.', 'Adjust the filters.') : tr('Use o botão “Adicionar”.', 'Use the “Add” button.')}</Empty>
         ) : (
           <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
-                  <th style={{ width: 36 }}><input type="checkbox" checked={allSel} onChange={() => setSel(allSel ? new Set() : new Set(rows.map((r) => r.id)))} aria-label="Selecionar todos" /></th>
-                  <th>Data</th>
-                  <th>Tipo</th>
-                  <th>Ativo</th>
-                  <th className="num">Qtd.</th>
-                  <th className="num">Preço</th>
-                  <th className="num hide-sm">Taxas</th>
+                  <th style={{ width: 36 }}><input type="checkbox" checked={allSel} onChange={() => setSel(allSel ? new Set() : new Set(rows.map((r) => r.id)))} aria-label={tr('Selecionar todos', 'Select all')} /></th>
+                  <th>{tr('Data', 'Date')}</th>
+                  <th>{tr('Tipo', 'Type')}</th>
+                  <th>{tr('Ativo', 'Asset')}</th>
+                  <th className="num">{tr('Qtd.', 'Qty.')}</th>
+                  <th className="num">{tr('Preço', 'Price')}</th>
+                  <th className="num hide-sm">{tr('Taxas', 'Fees')}</th>
                   <th className="num">Total</th>
-                  <th className="hide-sm">Instituição</th>
+                  <th className="hide-sm">{tr('Instituição', 'Institution')}</th>
                   <th />
                 </tr>
               </thead>
@@ -93,7 +94,7 @@ export function Lancamentos({ onEdit }: { onEdit: (i: FormInit) => void }) {
                 {rows.slice(0, limit).map((t) => {
                   const a = byId.get(t.assetId);
                   const m = a ? isMarketClass(a.cls) : true;
-                  const typeLabel = !m && t.type === 'BUY' ? 'Aplicação' : !m && t.type === 'SELL' ? 'Resgate' : TX_LABEL[t.type];
+                  const typeLabel = !m && t.type === 'BUY' ? tr('Aplicação', 'Deposit') : !m && t.type === 'SELL' ? tr('Resgate', 'Redemption') : TX_LABEL[t.type];
                   const isTrade = t.type === 'BUY' || t.type === 'SELL' || t.type === 'BONUS';
                   return (
                     <tr key={t.id} className="clickable" onClick={() => onEdit({ tx: t, asset: a })}>
@@ -109,7 +110,7 @@ export function Lancamentos({ onEdit }: { onEdit: (i: FormInit) => void }) {
                       <td className="num">{t.type === 'SPLIT' ? '' : fmtCurrency(t.quantity * t.price + (t.type === 'BUY' ? t.fees : -t.fees), a ? currencyOf(a) : 'BRL')}</td>
                       <td className="hide-sm text-2">{t.institution ?? ''}</td>
                       <td onClick={(e) => e.stopPropagation()}>
-                        <button className="icon-btn" title="Excluir" onClick={() => { actions.deleteTransactions([t.id]); toast('Lançamento excluído', { undo: true }); }}>
+                        <button className="icon-btn" title={tr('Excluir', 'Delete')} onClick={() => { actions.deleteTransactions([t.id]); toast(tr('Lançamento excluído', 'Transaction deleted'), { undo: true }); }}>
                           <Icon name="trash" size={16} />
                         </button>
                       </td>
@@ -120,7 +121,7 @@ export function Lancamentos({ onEdit }: { onEdit: (i: FormInit) => void }) {
             </table>
             {rows.length > limit && (
               <div className="row" style={{ justifyContent: 'center', padding: 12 }}>
-                <button className="btn sm" onClick={() => setLimit((l) => l + PAGE)}>Mostrar mais ({rows.length - limit})</button>
+                <button className="btn sm" onClick={() => setLimit((l) => l + PAGE)}>{tr('Mostrar mais', 'Show more')} ({rows.length - limit})</button>
               </div>
             )}
           </div>

@@ -4,10 +4,30 @@ import { CLASS_LABEL, FIXED_KIND_LABEL, INDEXER_LABEL, TX_LABEL, isMarketClass }
 import { allSales, computePositions } from './portfolio';
 import { bensEDireitos, computeTaxYear, incomeByAsset } from './tax';
 import { today, MONTHS_LONG } from './format';
+import { getLang, t, t as tr } from './i18n';
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
-function sheet(rows: Record<string, unknown>[], widths?: number[]) {
+// English column headers (rows are built with Portuguese keys).
+const HEAD_EN: Record<string, string> = {
+  Ativo: 'Asset', Nome: 'Name', Classe: 'Class', Instituição: 'Institution', Moeda: 'Currency', Quantidade: 'Quantity',
+  'Preço médio (moeda)': 'Avg. price (currency)', 'Preço médio (R$)': 'Avg. price (R$)', 'Valor (moeda)': 'Value (currency)',
+  'Custo total': 'Total cost', 'Preço atual': 'Current price', 'Valor atual': 'Current value', 'Resultado (R$)': 'Return (R$)',
+  'Resultado (%)': 'Return (%)', 'Proventos recebidos': 'Dividends received', Indexador: 'Index', Vencimento: 'Maturity', Tipo: 'Type',
+  Data: 'Date', Preço: 'Price', Taxas: 'Fees', Observação: 'Note', Grupo: 'Group', Código: 'Code',
+  Mês: 'Month', 'Vendas ações': 'Stock sales', 'Resultado ações': 'Stock result', 'Ações isento (≤ R$20k)': 'Stocks exempt (≤ R$20k)',
+  'Resultado ETFs': 'ETF result', 'Resultado BDRs': 'BDR result', 'Resultado comum tributável': 'Taxable regular result',
+  'Prejuízo compensado': 'Loss offset', 'Prejuízo a compensar': 'Loss carried forward', 'IR comum (15%)': 'Tax regular (15%)',
+  'Vendas FII': 'REIT sales', 'Resultado FII': 'REIT result', 'Prejuízo FII a compensar': 'REIT loss carried forward',
+  'IR FII (20%)': 'REIT tax (20%)', 'IRRF (0,005%)': 'IRRF (0.005%)', 'DARF 6015 a pagar': 'DARF 6015 to pay',
+  'Vendas cripto': 'Crypto sales', 'Ganho cripto': 'Crypto gain', 'IR cripto (GCAP)': 'Crypto tax (GCAP)',
+  'CNPJ pagadora': 'Payer CNPJ', 'Dividendos (isento, linha 09)': 'Dividends (exempt, line 09)',
+  'Rendimentos FII (isento)': 'REIT income (exempt)', 'JCP (exclusiva, linha 10)': 'JCP (withheld, line 10)', Outros: 'Other',
+};
+const head = (k: string) => (getLang() === 'en' ? HEAD_EN[k] ?? k.replace('Situação em', 'Position on') : k);
+
+function sheet(rawRows: Record<string, unknown>[], widths?: number[]) {
+  const rows = rawRows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [head(k), v === 'Sim' ? t('Sim', 'Yes') : v === 'Não' ? t('Não', 'No') : v])));
   const ws = XLSX.utils.json_to_sheet(rows);
   if (rows.length) {
     const keys = Object.keys(rows[0]);
@@ -52,7 +72,7 @@ export function transactionRows(d: Data) {
         Tipo: TX_LABEL[t.type],
         Ativo: a?.ticker ?? '?',
         Classe: a ? CLASS_LABEL[a.cls] : '',
-        Quantidade: t.type === 'SPLIT' ? `fator ${t.factor}` : t.quantity,
+        Quantidade: t.type === 'SPLIT' ? `${tr('fator', 'factor')} ${t.factor}` : t.quantity,
         Preço: t.price,
         Taxas: t.fees || 0,
         Total: r2(t.quantity * t.price),
@@ -64,8 +84,8 @@ export function transactionRows(d: Data) {
 
 export function exportWorkbook(d: Data, year?: number) {
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, sheet(positionsRows(d)), 'Posições');
-  XLSX.utils.book_append_sheet(wb, sheet(transactionRows(d)), 'Lançamentos');
+  XLSX.utils.book_append_sheet(wb, sheet(positionsRows(d)), t('Posições', 'Positions'));
+  XLSX.utils.book_append_sheet(wb, sheet(transactionRows(d)), t('Lançamentos', 'Transactions'));
   if (year) addTaxSheets(wb, d, year);
   XLSX.writeFile(wb, `carteira-${today()}.xlsx`);
 }
@@ -121,7 +141,7 @@ function addTaxSheets(wb: XLSX.WorkBook, d: Data, year: number) {
         'IR cripto (GCAP)': r2(m.cryptoTax),
       })),
     ),
-    `Renda Variável ${year}`,
+    `${t('Renda Variável', 'Capital gains')} ${year}`,
   );
 
   const inc = incomeByAsset(d.assets, d.transactions, year);
@@ -137,7 +157,7 @@ function addTaxSheets(wb: XLSX.WorkBook, d: Data, year: number) {
         Outros: r2(r.other),
       })),
     ),
-    `Proventos ${year}`,
+    `${t('Proventos', 'Dividends')} ${year}`,
   );
 }
 

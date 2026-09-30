@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { actions } from '../lib/store';
 import type { AssetClass } from '../lib/types';
 import { CLASS_LABEL } from '../lib/types';
+import { t } from '../lib/i18n';
 
 export function Modal({
   title, onClose, children, footer, wide,
@@ -18,7 +19,7 @@ export function Modal({
         <div className="modal-head">
           <h2>{title}</h2>
           <div className="spacer" />
-          <button className="icon-btn" onClick={onClose} aria-label="Fechar"><Icon name="x" /></button>
+          <button className="icon-btn" onClick={onClose} aria-label={t('Fechar', 'Close')}><Icon name="x" /></button>
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}
@@ -68,18 +69,18 @@ export function Toasts() {
   }, []);
   return (
     <div className="toasts" role="status">
-      {list.map((t) => (
-        <div key={t.id} className="toast">
-          <span>{t.text}</span>
-          {t.undo && (
+      {list.map((item) => (
+        <div key={item.id} className="toast">
+          <span>{item.text}</span>
+          {item.undo && (
             <button
               onClick={() => {
                 const label = actions.undo();
-                dismiss(t.id);
-                if (label) toast('Desfeito');
+                dismiss(item.id);
+                if (label) toast(t('Desfeito', 'Undone'));
               }}
             >
-              Desfazer
+              {t('Desfazer', 'Undo')}
             </button>
           )}
         </div>

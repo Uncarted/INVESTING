@@ -1,5 +1,6 @@
 import type { Settings } from './types';
 import { today } from './format';
+import { t } from './i18n';
 
 /**
  * Price lookup for the entry form: today's price or the close on any past date.
@@ -73,10 +74,10 @@ async function b3(symbol: string, date: string, isToday: boolean, s: Settings): 
     const hist: { date: number; close: number }[] = j?.results?.[0]?.historicalDataPrice ?? [];
     const end = Date.parse(date + 'T23:59:59Z') / 1000;
     const bar = hist.filter((h) => h.date <= end && h.close > 0).sort((a, b) => b.date - a.date)[0];
-    return bar ? ok(bar.close, toISO(bar.date * 1000), 'brapi', date) : { ok: false, reason: 'unavailable', hint: 'Histórico longo pode exigir o plano pago da brapi.' };
+    return bar ? ok(bar.close, toISO(bar.date * 1000), 'brapi', date) : { ok: false, reason: 'unavailable', hint: t('Histórico longo pode exigir o plano pago da brapi.', 'Long history may require the paid brapi plan.') };
   } catch (e) {
     const st = (e as { status?: number }).status;
-    if (st === 401 || st === 403) return { ok: false, reason: 'needs-key', hint: 'Adicione o token grátis da brapi em Ajustes.' };
+    if (st === 401 || st === 403) return { ok: false, reason: 'needs-key', hint: t('Adicione o token grátis da brapi em Ajustes.', 'Add the free brapi token in Settings.') };
     throw e;
   }
 }
@@ -117,7 +118,7 @@ async function us(symbol: string, date: string, isToday: boolean, s: Settings): 
   return {
     ok: false,
     reason: 'needs-key',
-    hint: isToday ? 'Adicione a chave grátis da Finnhub em Ajustes.' : 'Para preços de datas passadas, adicione a chave grátis da Twelve Data em Ajustes.',
+    hint: isToday ? t('Adicione a chave grátis da Finnhub em Ajustes.', 'Add the free Finnhub key in Settings.') : t('Para preços de datas passadas, adicione a chave grátis da Twelve Data em Ajustes.', 'For past-date prices, add the free Twelve Data key in Settings.'),
   };
 }
 

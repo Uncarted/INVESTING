@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { easeOutCubic, reducedMotion } from './motion';
 import { money, percent } from '../lib/format';
+import { t } from '../lib/i18n';
 
 export interface DonutSlice {
   key: string;
@@ -96,7 +97,7 @@ export function Donut({
 
   return (
     <div className="donut" onMouseLeave={() => onHover(null)}>
-      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label="Distribuição do patrimônio">
+      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label={t('Distribuição do patrimônio', 'Portfolio allocation')}>
         <circle cx={C} cy={C} r={R - THICK / 2} fill="none" stroke="var(--surface-2)" strokeWidth={THICK} />
         {paths.map(({ key, a0, a1 }) => {
           const s = bySlice.get(key);
@@ -129,7 +130,7 @@ export function Donut({
           <>
             <span className="dc-label">{centerLabel}</span>
             <span className="dc-value">{money(centerValue)}</span>
-            <span className="dc-sub">{slices.length} {slices.length === 1 ? 'grupo' : 'grupos'}</span>
+            <span className="dc-sub">{slices.length} {slices.length === 1 ? t('grupo', 'group') : t('grupos', 'groups')}</span>
           </>
         )}
       </div>

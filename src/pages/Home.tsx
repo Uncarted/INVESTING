@@ -3,7 +3,7 @@ import { actions, useData } from '../lib/store';
 import { allSales, computePositions, investedSeries, type Position } from '../lib/portfolio';
 import { computeTaxYear } from '../lib/tax';
 import { CLASS_LABEL, CLASS_ORDER, CURRENCY_LABEL, INCOME_TYPES, isMarketClass, type AssetClass } from '../lib/types';
-import { fmtCurrency, fmtDate, money, percent, qty, signedPercent, today, toISODate } from '../lib/format';
+import { MONTHS, fmtCurrency, fmtDate, money, percent, qty, signedPercent, today, toISODate } from '../lib/format';
 import { useLive, withLive } from '../lib/live';
 import { AreaChart } from '../components/charts';
 import { Donut, type DonutSlice } from '../components/Donut';
@@ -11,6 +11,7 @@ import { CountUp, Flash } from '../components/motion';
 import { Icon } from '../components/Icon';
 import { Logo, marketOf } from '../components/Logo';
 import { sampleData } from '../lib/sample';
+import { t } from '../lib/i18n';
 
 type SortKey = 'value' | 'result' | 'day' | 'name';
 type View = 'classe' | 'moeda' | 'ativo' | 'instituicao';
@@ -21,12 +22,14 @@ const CURRENCY_COLOR: Record<string, string> = { BRL: 'var(--c-RENDA_FIXA)', USD
 
 /** Which "currency bucket" a position belongs to. Crypto gets its own. */
 const bucketOf = (p: Position) => (p.asset.cls === 'CRIPTO' ? 'CRIPTO' : p.currency);
-const BUCKET_LABEL: Record<string, string> = { ...CURRENCY_LABEL, CRIPTO: 'Cripto' };
+const bucketLabel = (k: string) => (k === 'CRIPTO' ? t('Cripto', 'Crypto') : CURRENCY_LABEL[k as keyof typeof CURRENCY_LABEL] ?? k);
+const NO_INST = '__none';
+const instLabel = (k: string) => (k === NO_INST ? t('Sem instituição', 'No institution') : k);
 
 export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: string) => void; openAsset: (id: string) => void }) {
   const data = useData();
   const live = useLive();
-  const t = today();
+  const tdy = today();
   const [filter, setFilter] = useState<Filter>(null);
   const [view, setView] = useState<View>('classe');
   const [hover, setHover] = useState<string | null>(null);
@@ -36,30 +39,30 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
   const assets = useMemo(() => withLive(data.assets, live), [data.assets, live]);
   const settings = useMemo(() => (live.fx ? { ...data.settings, fx: { ...data.settings.fx, ...live.fx } } : data.settings), [data.settings, live.fx]);
   const positions = useMemo(
-    () => computePositions(assets, data.transactions, settings, t).filter((p) => !p.closed && (p.cost > 0.005 || p.value > 0.005)),
-    [assets, data.transactions, settings, t],
+    () => computePositions(assets, data.transactions, settings, tdy).filter((p) => !p.closed && (p.cost > 0.005 || p.value > 0.005)),
+    [assets, data.transactions, settings, tdy],
   );
   const series = useMemo(
-    () => investedSeries(data.assets, data.transactions, data.settings, t).map((d) => ({ month: d.month, value: d.cost })),
-    [data.assets, data.transactions, data.settings, t],
+    () => investedSeries(data.assets, data.transactions, data.settings, tdy).map((d) => ({ month: d.month, value: d.cost })),
+    [data.assets, data.transactions, data.settings, tdy],
   );
-  const year = Number(t.slice(0, 4));
+  const year = Number(tdy.slice(0, 4));
   const sales = useMemo(() => allSales(data.assets, data.transactions, data.settings), [data.assets, data.transactions, data.settings]);
   const tax = useMemo(() => computeTaxYear(sales, year), [sales, year]);
 
   if (!data.assets.length) {
     return (
       <div className="welcome reveal">
-        <div className="eyebrow">Sua carteira, num lugar só</div>
+        <div className="eyebrow">{t('Sua carteira, num lugar só', 'Your portfolio, all in one place')}</div>
         <h1 style={{ marginTop: 18 }}>
-          Tudo o que você investe,<br /><em>bonito e organizado.</em>
+          {t('Tudo o que você investe,', 'Everything you invest,')}<br /><em>{t('bonito e organizado.', 'beautiful and organized.')}</em>
         </h1>
-        <p>Ações daqui e de fora, FIIs, CDBs, Tesouro e cripto — com cotação ao vivo, preço médio, proventos e o imposto de renda prontos quando você precisar.</p>
+        <p>{t('Ações daqui e de fora, FIIs, CDBs, Tesouro e cripto — com cotação ao vivo, preço médio, proventos e o imposto de renda prontos quando você precisar.', 'Brazilian and foreign stocks, REITs, CDBs, Tesouro and crypto — with live quotes, average prices, dividends and your tax report ready whenever you need them.')}</p>
         <div className="row" style={{ justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button className="pill-btn" onClick={onAdd}><Icon name="plus" /> Adicionar investimento</button>
-          <button className="btn" style={{ height: 40 }} onClick={() => open('importar')}><Icon name="upload" size={16} /> Importar da B3</button>
+          <button className="pill-btn" onClick={onAdd}><Icon name="plus" /> {t('Adicionar investimento', 'Add an investment')}</button>
+          <button className="btn" style={{ height: 40 }} onClick={() => open('importar')}><Icon name="upload" size={16} /> {t('Importar da B3', 'Import from B3')}</button>
           <button className="btn ghost" style={{ height: 40 }} onClick={() => actions.replaceAll({ ...sampleData(), settings: data.settings }, 'Exemplo carregado')}>
-            Ver com dados de exemplo
+            {t('Ver com dados de exemplo', 'Try it with sample data')}
           </button>
         </div>
       </div>
@@ -70,15 +73,15 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
   const cost = positions.reduce((s, p) => s + p.cost, 0);
   const result = total - cost;
   const dayChange = positions.reduce((s, p) => s + p.dayChange, 0);
-  const yearAgo = `${year - 1}${t.slice(4)}`;
+  const yearAgo = `${year - 1}${tdy.slice(4)}`;
   const income12m = data.transactions
-    .filter((x) => INCOME_TYPES.includes(x.type) && x.date > yearAgo && x.date <= t)
+    .filter((x) => INCOME_TYPES.includes(x.type) && x.date > yearAgo && x.date <= tdy)
     .reduce((s, x) => s + x.quantity * x.price, 0);
   const realizedYear = sales.filter((s) => s.date.startsWith(String(year))).reduce((s, x) => s + x.gain, 0);
   const nextDarf = tax.months
     .filter((m) => m.darf > 0)
     .map((m) => ({ ...m, due: darfDue(m.month) }))
-    .find((m) => m.due >= t);
+    .find((m) => m.due >= tdy);
 
   const foreign = positions.filter((p) => p.currency !== 'BRL');
   const usdValue = foreign.filter((p) => p.currency === 'USD').reduce((s, p) => s + p.valueNative, 0);
@@ -87,7 +90,7 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
 
   // ----- Donut groups for the selected view -----
   const groupKey = (p: Position): string =>
-    view === 'classe' ? p.asset.cls : view === 'moeda' ? bucketOf(p) : view === 'ativo' ? p.asset.id : p.asset.institution || 'Sem instituição';
+    view === 'classe' ? p.asset.cls : view === 'moeda' ? bucketOf(p) : view === 'ativo' ? p.asset.id : p.asset.institution || NO_INST;
   const groups = new Map<string, number>();
   for (const p of positions) groups.set(groupKey(p), (groups.get(groupKey(p)) ?? 0) + p.value);
   let slices: DonutSlice[] = [...groups]
@@ -96,7 +99,7 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
       key: k,
       value: v,
       label:
-        view === 'classe' ? CLASS_LABEL[k as AssetClass] : view === 'moeda' ? BUCKET_LABEL[k] : view === 'ativo' ? positions.find((p) => p.asset.id === k)!.asset.ticker : k,
+        view === 'classe' ? CLASS_LABEL[k as AssetClass] : view === 'moeda' ? bucketLabel(k) : view === 'ativo' ? positions.find((p) => p.asset.id === k)!.asset.ticker : instLabel(k),
       color: view === 'classe' ? `var(--c-${k})` : view === 'moeda' ? CURRENCY_COLOR[k] : PALETTE[i % PALETTE.length],
       sub:
         view === 'moeda' && (k === 'USD' || k === 'EUR')
@@ -105,7 +108,7 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
     }));
   if (slices.length > 8) {
     const rest = slices.slice(7);
-    slices = [...slices.slice(0, 7), { key: '__outros', label: `Outros (${rest.length})`, value: rest.reduce((s, x) => s + x.value, 0), color: 'var(--c-OUTRO)' }];
+    slices = [...slices.slice(0, 7), { key: '__outros', label: `${t('Outros', 'Other')} (${rest.length})`, value: rest.reduce((s, x) => s + x.value, 0), color: 'var(--c-OUTRO)' }];
   }
   if (view === 'classe') slices.sort((a, b) => CLASS_ORDER.indexOf(a.key as AssetClass) - CLASS_ORDER.indexOf(b.key as AssetClass));
 
@@ -120,7 +123,7 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
   const matchFilter = (p: Position) => {
     if (!filter) return true;
     const v = filter.view;
-    return (v === 'classe' ? p.asset.cls : v === 'moeda' ? bucketOf(p) : p.asset.institution || 'Sem instituição') === filter.key;
+    return (v === 'classe' ? p.asset.cls : v === 'moeda' ? bucketOf(p) : p.asset.institution || NO_INST) === filter.key;
   };
   const dayPct = (p: Position) => {
     const r = p.asset.prevClose && p.asset.currentPrice ? p.asset.currentPrice / p.asset.prevClose : 1;
@@ -140,8 +143,8 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
       <section className="hero">
         <div className="reveal">
           <div className="eyebrow row" style={{ gap: 10 }}>
-            Patrimônio total
-            {isLive && <span className="live-dot" title="Cotações ao vivo">ao vivo</span>}
+            {t('Patrimônio total', 'Total net worth')}
+            {isLive && <span className="live-dot" title={t('Cotações ao vivo', 'Live quotes')}>{t('ao vivo', 'live')}</span>}
           </div>
           <div className="big-number">
             <CountUp value={total} format={(v) => splitMoney(v)[0]} duration={1400} />
@@ -153,28 +156,28 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
               <CountUp value={Math.abs(result)} format={(v) => money(v)} duration={1400} /> · {signedPercent(cost ? result / cost : 0)}
             </span>
             {dayChange !== 0 && (
-              <span className={'badge ' + (dayChange >= 0 ? 'pos' : 'neg')} title="Variação desde o fechamento anterior">
-                Hoje <Flash value={dayChange}>{dayChange >= 0 ? '+' : '−'}{money(Math.abs(dayChange))}</Flash>
+              <span className={'badge ' + (dayChange >= 0 ? 'pos' : 'neg')} title={t('Variação desde o fechamento anterior', 'Change since the previous close')}>
+                {t('Hoje', 'Today')} <Flash value={dayChange}>{dayChange >= 0 ? '+' : '−'}{money(Math.abs(dayChange))}</Flash>
               </span>
             )}
             {usdValue > 0 && (
-              <button className="badge badge-btn" onClick={() => setView('moeda')} title="Ver por moeda">
-                <span className="dot" style={{ background: 'var(--c-ACAO)' }} /> {fmtCurrency(usdValue, 'USD')} em dólar
+              <button className="badge badge-btn" onClick={() => setView('moeda')} title={t('Ver por moeda', 'View by currency')}>
+                <span className="dot" style={{ background: 'var(--c-ACAO)' }} /> {fmtCurrency(usdValue, 'USD')} {t('em dólar', 'in dollars')}
               </button>
             )}
-            <span className="badge" title="Cotação do dólar">US$ 1 = <Flash value={settings.fx.USD}>{money(settings.fx.USD, { always: true })}</Flash></span>
+            <span className="badge" title={t('Cotação do dólar', 'Dollar exchange rate')}>US$ 1 = <Flash value={settings.fx.USD}>{money(settings.fx.USD, { always: true })}</Flash></span>
           </div>
           {needsKey && (
             <button className="connect-hint" onClick={() => open('config')}>
-              <Icon name="refresh" size={14} /> Conecte as cotações ao vivo (grátis) →
+              <Icon name="refresh" size={14} /> {t('Conecte as cotações ao vivo (grátis) →', 'Connect live quotes (free) →')}
             </button>
           )}
         </div>
         <div className="hero-chart reveal" style={{ ['--i' as string]: 2 }}>
           <div className="row" style={{ padding: '0 6px 6px' }}>
-            <span className="eyebrow">Valor aplicado</span>
+            <span className="eyebrow">{t('Valor aplicado', 'Amount invested')}</span>
             <div className="spacer" />
-            <span className="muted small">desde {fmtMonthLong(series[0]?.month)}</span>
+            <span className="muted small">{t('desde', 'since')} {fmtMonthLong(series[0]?.month)}</span>
           </div>
           <AreaChart data={series} height={170} compact />
         </div>
@@ -182,28 +185,28 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
 
       <div className="tiles">
         <button className="tile reveal" style={{ ['--i' as string]: 3 }} onClick={() => open('proventos')}>
-          <span className="t-label"><Icon name="coins" size={14} /> Proventos · 12 meses</span>
+          <span className="t-label"><Icon name="coins" size={14} /> {t('Proventos · 12 meses', 'Dividends · 12 months')}</span>
           <span className="t-value"><CountUp value={income12m} format={(v) => money(v)} /></span>
-          <span className="t-sub">≈ {money(income12m / 12)} por mês · {percent(total ? income12m / total : 0)} a.a.</span>
+          <span className="t-sub">≈ {money(income12m / 12)} {t('por mês', 'per month')} · {percent(total ? income12m / total : 0)} {t('a.a.', 'p.a.')}</span>
         </button>
         <button className={'tile reveal' + (nextDarf ? ' alert' : '')} style={{ ['--i' as string]: 4 }} onClick={() => open('ir')}>
-          <span className="t-label"><Icon name="receipt" size={14} /> Imposto de renda</span>
-          <span className="t-value">{nextDarf ? money(nextDarf.darf, { always: true }) : 'Nada a pagar'}</span>
-          <span className="t-sub">{nextDarf ? `DARF 6015 vence ${fmtDate(nextDarf.due)}` : `Relatório do IR ${year - 1} pronto →`}</span>
+          <span className="t-label"><Icon name="receipt" size={14} /> {t('Imposto de renda', 'Income tax')}</span>
+          <span className="t-value">{nextDarf ? money(nextDarf.darf, { always: true }) : t('Nada a pagar', 'Nothing to pay')}</span>
+          <span className="t-sub">{nextDarf ? `DARF 6015 ${t('vence', 'due')} ${fmtDate(nextDarf.due)}` : t(`Relatório do IR ${year - 1} pronto →`, `${year - 1} tax report ready →`)}</span>
         </button>
         <button className="tile reveal" style={{ ['--i' as string]: 5 }} onClick={() => open('lancamentos')}>
-          <span className="t-label"><Icon name="chart" size={14} /> Lucro com vendas em {year}</span>
+          <span className="t-label"><Icon name="chart" size={14} /> {t('Lucro com vendas em', 'Profit from sales in')} {year}</span>
           <span className={'t-value ' + (realizedYear > 0 ? 'pos' : realizedYear < 0 ? 'neg' : '')}><CountUp value={realizedYear} format={(v) => money(v)} /></span>
-          <span className="t-sub">{tax.totals.acoesExemptGain > 0 ? `${money(tax.totals.acoesExemptGain)} isento de IR` : 'resultado realizado no ano'}</span>
+          <span className="t-sub">{tax.totals.acoesExemptGain > 0 ? `${money(tax.totals.acoesExemptGain)} ${t('isento de IR', 'tax-exempt')}` : t('resultado realizado no ano', 'realized this year')}</span>
         </button>
       </div>
 
       <section className="section reveal" style={{ ['--i' as string]: 6 }}>
         <div className="section-head">
-          <h2>Onde está seu dinheiro</h2>
+          <h2>{t('Onde está seu dinheiro', 'Where your money is')}</h2>
           <div className="spacer" />
           <div className="seg">
-            {([['classe', 'Classe'], ['moeda', 'Moeda'], ['ativo', 'Ativo'], ['instituicao', 'Instituição']] as [View, string][]).map(([v, l]) => (
+            {([['classe', t('Classe', 'Class')], ['moeda', t('Moeda', 'Currency')], ['ativo', t('Ativo', 'Asset')], ['instituicao', t('Instituição', 'Institution')]] as [View, string][]).map(([v, l]) => (
               <button key={v} className={view === v ? 'on' : ''} onClick={() => { setView(v); setHover(null); }}>{l}</button>
             ))}
           </div>
@@ -214,7 +217,7 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
             active={hover ?? (filter?.view === view ? filter.key : null)}
             onHover={setHover}
             onSelect={selectSlice}
-            centerLabel={view === 'moeda' ? 'Por moeda' : view === 'ativo' ? 'Por ativo' : view === 'instituicao' ? 'Por instituição' : 'Por classe'}
+            centerLabel={view === 'moeda' ? t('Por moeda', 'By currency') : view === 'ativo' ? t('Por ativo', 'By asset') : view === 'instituicao' ? t('Por instituição', 'By institution') : t('Por classe', 'By class')}
             centerValue={total}
           />
           <div className="alloc-list">
@@ -246,15 +249,15 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
 
       <section className="section">
         <div className="section-head">
-          <h2>Seus ativos</h2>
+          <h2>{t('Seus ativos', 'Your holdings')}</h2>
           <div className="spacer" />
           <div className="search-inline">
             <Icon name="search" size={15} />
-            <input placeholder="Buscar" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input placeholder={t('Buscar', 'Search')} value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
         </div>
         <div className="chips" style={{ marginBottom: 12 }}>
-          <button className={'chip-btn' + (!filter ? ' on' : '')} onClick={() => setFilter(null)}>Tudo</button>
+          <button className={'chip-btn' + (!filter ? ' on' : '')} onClick={() => setFilter(null)}>{t('Tudo', 'All')}</button>
           {classes.map((c) => {
             const on = filter?.view === 'classe' && filter.key === c;
             return (
@@ -265,7 +268,7 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
           })}
           {filter && filter.view !== 'classe' && (
             <button className="chip-btn on" onClick={() => setFilter(null)}>
-              {filter.view === 'moeda' ? BUCKET_LABEL[filter.key] : filter.key} <Icon name="x" size={13} />
+              {filter.view === 'moeda' ? bucketLabel(filter.key) : instLabel(filter.key)} <Icon name="x" size={13} />
             </button>
           )}
         </div>
@@ -273,18 +276,18 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
         <div className="holdings">
           <div className="h-row head">
             <span />
-            <button style={{ textAlign: 'left' }} onClick={() => setSort('name')}>Ativo{sort === 'name' ? ' ↓' : ''}</button>
-            <button className="h-cell hide-md" onClick={() => setSort('day')}>Preço · hoje{sort === 'day' ? ' ↓' : ''}</button>
-            <span className="h-cell hide-md">Preço médio</span>
-            <button className="h-cell" onClick={() => setSort('value')}>Valor{sort === 'value' ? ' ↓' : ''}</button>
-            <button className="h-cell" onClick={() => setSort('result')}>Resultado{sort === 'result' ? ' ↓' : ''}</button>
+            <button style={{ textAlign: 'left' }} onClick={() => setSort('name')}>{t('Ativo', 'Asset')}{sort === 'name' ? ' ↓' : ''}</button>
+            <button className="h-cell hide-md" onClick={() => setSort('day')}>{t('Preço · hoje', 'Price · today')}{sort === 'day' ? ' ↓' : ''}</button>
+            <span className="h-cell hide-md">{t('Preço médio', 'Avg. price')}</span>
+            <button className="h-cell" onClick={() => setSort('value')}>{t('Valor', 'Value')}{sort === 'value' ? ' ↓' : ''}</button>
+            <button className="h-cell" onClick={() => setSort('result')}>{t('Resultado', 'Return')}{sort === 'result' ? ' ↓' : ''}</button>
           </div>
           {list.map((p, i) => {
             const m = isMarketClass(p.asset.cls);
             const r = p.value - p.cost;
             const cur = p.currency;
             const dp = dayPct(p);
-            const unit = p.asset.cls === 'CRIPTO' ? '' : p.asset.cls === 'ACAO' || p.asset.cls === 'EXTERIOR' ? ' ações' : ' cotas';
+            const unit = p.asset.cls === 'CRIPTO' ? '' : p.asset.cls === 'ACAO' || p.asset.cls === 'EXTERIOR' ? t(' ações', ' shares') : t(' cotas', ' units');
             return (
               <div key={p.asset.id} className="h-row reveal" style={{ ['--i' as string]: Math.min(i, 14) }} onClick={() => openAsset(p.asset.id)}>
                 <Logo symbol={p.asset.ticker} market={marketOf(p.asset.cls, cur)} cls={p.asset.cls} />
@@ -300,18 +303,18 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
                     p.asset.currentPrice ? (
                       <>
                         <Flash value={p.asset.currentPrice} className="price">{fmtCurrency(p.asset.currentPrice, cur, { always: true })}</Flash>
-                        <small className={dp > 0 ? 'pos' : dp < 0 ? 'neg' : ''}>{dp ? signedPercent(dp) : 'sem variação'}</small>
+                        <small className={dp > 0 ? 'pos' : dp < 0 ? 'neg' : ''}>{dp ? signedPercent(dp) : t('sem variação', 'no change')}</small>
                       </>
                     ) : (
-                      <span className="muted">sem cotação</span>
+                      <span className="muted">{t('sem cotação', 'no quote')}</span>
                     )
                   ) : (
-                    <span className="muted">{p.valueIsEstimate ? 'estimado' : 'saldo'}</span>
+                    <span className="muted">{p.valueIsEstimate ? t('estimado', 'estimated') : t('saldo', 'balance')}</span>
                   )}
                 </span>
                 <span className="h-cell hide-md">
                   {m ? fmtCurrency(p.avgPriceNative, cur, { always: true }) : money(p.cost)}
-                  <small>{m ? `custo ${money(p.cost)}` : 'aplicado'}</small>
+                  <small>{m ? `${t('custo', 'cost')} ${money(p.cost)}` : t('aplicado', 'invested')}</small>
                 </span>
                 <span className="h-cell">
                   <Flash value={p.value} className="h-value">{money(p.value)}</Flash>
@@ -324,7 +327,7 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
               </div>
             );
           })}
-          {!list.length && <div className="empty">Nenhum ativo encontrado.</div>}
+          {!list.length && <div className="empty">{t('Nenhum ativo encontrado.', 'No holdings found.')}</div>}
         </div>
       </section>
     </>
@@ -336,15 +339,16 @@ const pct = (p: Position) => (p.cost ? (p.value - p.cost) / p.cost : 0);
 
 function splitMoney(v: number): [string, string] {
   const s = money(v);
-  const i = s.lastIndexOf(',');
+  const i = s.lastIndexOf(getDecimal());
   return i > 0 && !s.includes('•') ? [s.slice(0, i), s.slice(i)] : [s, ''];
 }
 
-const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const getDecimal = () => (t(',', '.'));
 function fmtMonthLong(ym?: string) {
   if (!ym) return '';
   const [y, m] = ym.split('-');
-  return `${MONTHS[Number(m) - 1]} ${y}`;
+  const name = MONTHS[Number(m) - 1];
+  return `${t(name, name[0].toUpperCase() + name.slice(1))} ${y}`;
 }
 
 /** DARF due date: last business day of the following month (ignores holidays). */
