@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { actions, useData } from '../lib/store';
 import { fetchRates } from '../lib/quotes';
 import { checkKey, cleanKey } from '../lib/keys';
@@ -173,53 +173,56 @@ function Feed({ name, detail, status }: { name: string; detail: string; status: 
   );
 }
 
+/** Quiet key input: saves when you leave the field (or press Enter) and shows a small ✓/✗ from a live test. */
 function KeyField({
   label, kind, value, onSave, help,
 }: { label: string; kind: 'finnhub' | 'brapi' | 'twelve'; value?: string; onSave: (v: string | undefined) => void; help: React.ReactNode }) {
-  const [draft, setDraft] = useState('');
-  const [editing, setEditing] = useState(!value);
   const [state, setState] = useState<{ status: 'idle' | 'testing' | 'ok' | 'bad'; detail?: string }>({ status: 'idle' });
 
-  async function save() {
-    const key = cleanKey(draft);
-    if (!key) return setState({ status: 'bad', detail: 'Cole a chave primeiro.' });
-    onSave(key);
-    setEditing(false);
-    setDraft('');
+  async function test(key: string) {
     setState({ status: 'testing' });
     const r = await checkKey(kind, key);
     setState({ status: r.ok ? 'ok' : 'bad', detail: r.detail });
-    toast(r.ok ? 'Chave salva e funcionando' : 'Chave salva — mas o teste falhou');
   }
-  async function test() {
-    if (!value) return;
-    setState({ status: 'testing' });
-    const r = await checkKey(kind, value);
-    setState({ status: r.ok ? 'ok' : 'bad', detail: r.detail });
+
+  // Check the saved key once when the page opens.
+  useEffect(() => {
+    if (value) void test(value);
+    // Only on mount: re-testing on every render would spam the providers.
+  }, []);
+
+  function commit(el: HTMLInputElement) {
+    const key = cleanKey(el.value);
+    el.value = key;
+    if (key === (value ?? '')) return;
+    onSave(key || undefined);
+    if (key) {
+      toast('Chave salva');
+      void test(key);
+    } else setState({ status: 'idle' });
   }
 
   return (
-    <div className="field keyfield">
+    <label className="field">
       <span>{label}</span>
-      {editing ? (
-        <form className="row" onSubmit={(e) => { e.preventDefault(); save(); }}>
-          <input className="input" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="cole aqui a chave" autoComplete="off" spellCheck={false} />
-          <button className="btn primary" type="submit">Salvar</button>
-          {value && <button className="btn ghost" type="button" onClick={() => { setEditing(false); setDraft(''); }}>Cancelar</button>}
-        </form>
-      ) : (
-        <div className="row key-saved">
-          <span className="key-mask"><Icon name="check" size={14} /> Chave salva · ••••{value?.slice(-4)}</span>
-          <div className="spacer" />
-          <button className="btn sm" onClick={test} disabled={state.status === 'testing'}>{state.status === 'testing' ? 'Testando…' : 'Testar'}</button>
-          <button className="btn sm ghost" onClick={() => { setEditing(true); setState({ status: 'idle' }); }}>Trocar</button>
-          <button className="btn sm ghost danger" onClick={() => { onSave(undefined); setEditing(true); setState({ status: 'idle' }); }}>Remover</button>
-        </div>
-      )}
-      {state.status === 'testing' && <span className="hint">Testando a chave…</span>}
-      {state.status === 'ok' && <span className="hint" style={{ color: 'var(--pos)' }}>✓ {state.detail}</span>}
-      {state.status === 'bad' && <span className="hint" style={{ color: 'var(--neg)' }}>✗ {state.detail}</span>}
-      <span className="hint">{help}</span>
-    </div>
+      <span className="key-input">
+        <input
+          className="input"
+          type="password"
+          defaultValue={value ?? ''}
+          placeholder="cole aqui a chave"
+          autoComplete="off"
+          spellCheck={false}
+          onBlur={(e) => commit(e.currentTarget)}
+          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+        />
+        {state.status !== 'idle' && (
+          <span className={'key-status ' + state.status} title={state.detail}>
+            {state.status === 'testing' ? <span className="spinner" /> : state.status === 'ok' ? '✓' : '✗'}
+          </span>
+        )}
+      </span>
+      <span className="hint">{state.status === 'bad' ? <span className="neg">{state.detail}</span> : help}</span>
+    </label>
   );
 }
