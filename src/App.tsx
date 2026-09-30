@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { actions, getData, useData } from './lib/store';
 import { setHideValues } from './lib/format';
 import { exportWorkbook } from './lib/exporters';
+import { flushLive, startLive } from './lib/live';
 import { Icon } from './components/Icon';
 import { Toasts } from './components/ui';
 import { TransactionForm, type FormInit } from './components/TransactionForm';
@@ -53,6 +54,16 @@ export function App() {
     const onHash = () => setPanel(readHash());
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  // Live quotes: (re)start whenever the tickers or keys change.
+  const s = data.settings;
+  useEffect(() => {
+    startLive(data.assets, s);
+  }, [data.assets, s]);
+  useEffect(() => {
+    window.addEventListener('beforeunload', flushLive);
+    return () => window.removeEventListener('beforeunload', flushLive);
   }, []);
 
   const theme = data.settings.theme === 'system' ? (systemDark ? 'dark' : 'light') : data.settings.theme;

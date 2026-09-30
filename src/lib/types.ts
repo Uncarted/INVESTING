@@ -65,6 +65,10 @@ export interface FixedIncomeInfo {
   issuer?: string;
 }
 
+export type Currency = 'BRL' | 'USD' | 'EUR';
+export const CURRENCY_LABEL: Record<Currency, string> = { BRL: 'Real', USD: 'Dólar', EUR: 'Euro' };
+export const CURRENCY_SYMBOL: Record<Currency, string> = { BRL: 'R$', USD: 'US$', EUR: '€' };
+
 export interface Asset {
   id: string;
   /** Ticker (PETR4) or a short name for fixed income (CDB Banco X 2028). */
@@ -73,7 +77,12 @@ export interface Asset {
   cls: AssetClass;
   cnpj?: string;
   institution?: string;
+  /** Currency prices are quoted in (default BRL). */
+  currency?: Currency;
+  /** Last known price, in the asset's currency. */
   currentPrice?: number;
+  /** Previous close, for the day change. */
+  prevClose?: number;
   priceUpdatedAt?: string;
   /** Value-based assets: manually informed current balance. */
   manualValue?: number;
@@ -122,6 +131,8 @@ export interface Transaction {
   factor?: number;
   /** Value-based SELL: closes the position (resgate total). */
   closes?: boolean;
+  /** Foreign assets: BRL per unit of the asset's currency on the trade date. */
+  fxRate?: number;
   institution?: string;
   notes?: string;
   source?: 'manual' | 'b3' | 'csv';
@@ -136,6 +147,10 @@ export interface Settings {
   ipcaRate: number;
   selicRate: number;
   brapiToken?: string;
+  finnhubToken?: string;
+  /** BRL per unit of foreign currency. */
+  fx: { USD: number; EUR: number; updatedAt?: string };
+  livePrices: boolean;
   theme: 'system' | 'light' | 'dark';
   hideValues: boolean;
   lastBackupAt?: string;

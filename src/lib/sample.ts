@@ -11,6 +11,8 @@ export function sampleData(): Data {
     { id: 's-hglg', ticker: 'HGLG11', name: 'CSHG Logística', cls: 'FII', institution: 'XP', currentPrice: 158.3, createdAt: at },
     { id: 's-mxrf', ticker: 'MXRF11', name: 'Maxi Renda', cls: 'FII', institution: 'Nubank', currentPrice: 9.6, createdAt: at },
     { id: 's-ivvb', ticker: 'IVVB11', name: 'iShares S&P 500', cls: 'ETF', institution: 'XP', currentPrice: 392.5, createdAt: at },
+    { id: 's-amd', ticker: 'AMD', name: 'Advanced Micro Devices', cls: 'EXTERIOR', currency: 'USD', institution: 'Avenue', currentPrice: 162.4, prevClose: 159.8, createdAt: at },
+    { id: 's-ttwo', ticker: 'TTWO', name: 'Take-Two Interactive', cls: 'EXTERIOR', currency: 'USD', institution: 'Avenue', currentPrice: 238.1, prevClose: 240.3, createdAt: at },
     { id: 's-btc', ticker: 'BTC', name: 'Bitcoin', cls: 'CRIPTO', institution: 'Binance', currentPrice: 610000, createdAt: at },
     {
       id: 's-cdb', ticker: 'CDB Inter 2027', cls: 'RENDA_FIXA', institution: 'Inter', createdAt: at,
@@ -54,6 +56,9 @@ export function sampleData(): Data {
     t('s-ivvb', 'BUY', '2024-06-20', 20, 318.0, 0),
     t('s-ivvb', 'BUY', '2025-09-02', 10, 375.5, 0),
     t('s-ivvb', 'SELL', '2026-03-10', 8, 402.0, 0),
+    t('s-amd', 'BUY', '2024-09-10', 15, 142.5, 0, { fxRate: 5.58 }),
+    t('s-amd', 'BUY', '2025-04-08', 10, 88.2, 0, { fxRate: 5.91 }),
+    t('s-ttwo', 'BUY', '2025-02-12', 12, 186.0, 0, { fxRate: 5.77 }),
     t('s-btc', 'BUY', '2024-03-01', 0.02, 310000, 0),
     t('s-btc', 'BUY', '2025-05-20', 0.015, 590000, 0),
     t('s-cdb', 'BUY', '2024-06-15', 1, 10000),

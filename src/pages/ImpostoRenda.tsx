@@ -29,7 +29,7 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
   const [year, setYear] = useState(cur - 1);
   const [tab, setTab] = useState<Tab>('bens');
 
-  const sales = useMemo(() => allSales(data.assets, data.transactions), [data]);
+  const sales = useMemo(() => allSales(data.assets, data.transactions, data.settings), [data]);
   const tax = useMemo(() => computeTaxYear(sales, year), [sales, year]);
   const bens = useMemo(() => bensEDireitos(data.assets, data.transactions, data.settings, year), [data, year]);
   const income = useMemo(() => incomeByAsset(data.assets, data.transactions, year), [data, year]);

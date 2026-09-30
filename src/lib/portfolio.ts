@@ -1,4 +1,4 @@
-import type { Asset, AssetClass, Settings, Transaction } from './types';
+import type { Asset, AssetClass, Currency, Settings, Transaction } from './types';
 import { INCOME_TYPES, isMarketClass } from './types';
 
 export interface Sale {
@@ -21,6 +21,13 @@ export interface Sale {
 
 export interface Position {
   asset: Asset;
+  currency: Currency;
+  /** Average price in the asset's own currency. */
+  avgPriceNative: number;
+  /** Current value in the asset's own currency. */
+  valueNative: number;
+  /** Change since previous close, in BRL (0 when unknown). */
+  dayChange: number;
   quantity: number;
   avgPrice: number;
   /** Cost basis of what is still held. */
@@ -51,6 +58,8 @@ export function sortTx(txs: Transaction[]): Transaction[] {
 interface MarketState {
   quantity: number;
   cost: number;
+  /** Cost in the asset's own currency. */
+  costNative: number;
   realized: number;
   income: number;
   sales: Sale[];
@@ -62,40 +71,54 @@ interface MarketState {
  * buys add qty×price + fees to cost; sells remove avg×qty from cost and don't change the average;
  * splits change quantity only; bonus shares add qty at the cost attributed by the company.
  */
-export function runMarket(asset: Asset, txs: Transaction[], until?: string): MarketState {
-  const st: MarketState = { quantity: 0, cost: 0, realized: 0, income: 0, sales: [] };
+export const currencyOf = (a: Asset): Currency => a.currency ?? (a.cls === 'EXTERIOR' ? 'USD' : 'BRL');
+
+/** BRL per unit of currency: the rate stored on the trade, else the current rate. */
+export const fxFor = (t: Transaction, cur: Currency, s?: Pick<Settings, 'fx'>) =>
+  cur === 'BRL' ? 1 : t.fxRate ?? s?.fx?.[cur] ?? 1;
+
+export function runMarket(asset: Asset, txs: Transaction[], until?: string, settings?: Pick<Settings, 'fx'>): MarketState {
+  const st: MarketState = { quantity: 0, cost: 0, costNative: 0, realized: 0, income: 0, sales: [] };
+  const cur = currencyOf(asset);
   const sorted = sortTx(txs);
   const buyDays = new Set(sorted.filter((t) => t.type === 'BUY').map((t) => t.date));
   for (const t of sorted) {
     if (until && t.date > until) break;
+    const fx = fxFor(t, cur, settings);
     switch (t.type) {
       case 'BUY':
         st.quantity += t.quantity;
-        st.cost += t.quantity * t.price + (t.fees || 0);
+        st.costNative += t.quantity * t.price + (t.fees || 0);
+        st.cost += (t.quantity * t.price + (t.fees || 0)) * fx;
         st.firstDate ??= t.date;
         break;
       case 'BONUS':
         st.quantity += t.quantity;
-        st.cost += t.quantity * t.price;
+        st.costNative += t.quantity * t.price;
+        st.cost += t.quantity * t.price * fx;
         break;
       case 'SPLIT':
         if (t.factor && t.factor > 0) st.quantity *= t.factor;
         break;
       case 'SELL': {
         const avg = st.quantity > EPS ? st.cost / st.quantity : 0;
+        const avgNative = st.quantity > EPS ? st.costNative / st.quantity : 0;
         const held = Math.max(st.quantity, 0);
         const oversold = t.quantity > held + EPS;
         const q = Math.min(t.quantity, held);
-        const grossValue = t.quantity * t.price;
-        const proceeds = grossValue - (t.fees || 0);
+        // All tax figures in BRL, converted at the trade date's rate.
+        const grossValue = t.quantity * t.price * fx;
+        const proceeds = grossValue - (t.fees || 0) * fx;
         // If oversold, only the held part has a known cost.
         const cost = avg * q;
         const gain = proceeds - cost;
         st.quantity -= q;
         st.cost -= cost;
+        st.costNative -= avgNative * q;
         if (st.quantity <= EPS) {
           st.quantity = 0;
           st.cost = 0;
+          st.costNative = 0;
         }
         st.realized += gain;
         st.sales.push({
@@ -105,7 +128,7 @@ export function runMarket(asset: Asset, txs: Transaction[], until?: string): Mar
         break;
       }
       default:
-        if (INCOME_TYPES.includes(t.type)) st.income += t.quantity * t.price;
+        if (INCOME_TYPES.includes(t.type)) st.income += t.quantity * t.price * fx;
     }
   }
   return st;
@@ -217,15 +240,27 @@ export function computePositions(
   return assets.map((asset) => {
     const list = byAsset.get(asset.id) ?? [];
     if (isMarketClass(asset.cls)) {
-      const st = runMarket(asset, list, asOf);
+      const cur = currencyOf(asset);
+      const fxNow = cur === 'BRL' ? 1 : settings.fx?.[cur] ?? 1;
+      const st = runMarket(asset, list, asOf, settings);
       const avg = st.quantity > EPS ? st.cost / st.quantity : 0;
+      const avgNative = st.quantity > EPS ? st.costNative / st.quantity : 0;
       const hasPrice = asset.currentPrice !== undefined && asset.currentPrice > 0;
+      const valueNative = hasPrice ? st.quantity * asset.currentPrice! : st.costNative;
       return {
         asset,
+        currency: cur,
+        avgPriceNative: avgNative,
+        valueNative,
+        // Ignore implausible previous closes (e.g. stale data after a split).
+        dayChange:
+          hasPrice && asset.prevClose && asset.currentPrice! / asset.prevClose < 1.5 && asset.currentPrice! / asset.prevClose > 0.67
+            ? st.quantity * (asset.currentPrice! - asset.prevClose) * fxNow
+            : 0,
         quantity: st.quantity,
         avgPrice: avg,
         cost: st.cost,
-        value: hasPrice ? st.quantity * asset.currentPrice! : st.cost,
+        value: hasPrice ? valueNative * fxNow : st.cost,
         valueIsEstimate: !hasPrice,
         realized: st.realized,
         income: st.income,
@@ -236,6 +271,10 @@ export function computePositions(
     const st = runValue(asset, list, settings, asOf);
     return {
       asset,
+      currency: 'BRL' as Currency,
+      avgPriceNative: st.cost,
+      valueNative: st.value,
+      dayChange: 0,
       quantity: st.closed ? 0 : 1,
       avgPrice: st.cost,
       cost: st.cost,
@@ -259,12 +298,12 @@ export function groupTx(txs: Transaction[]): Map<string, Transaction[]> {
   return m;
 }
 
-export function allSales(assets: Asset[], txs: Transaction[]): Sale[] {
+export function allSales(assets: Asset[], txs: Transaction[], settings?: Pick<Settings, 'fx'>): Sale[] {
   const byAsset = groupTx(txs);
   const out: Sale[] = [];
   for (const a of assets) {
     if (!isMarketClass(a.cls)) continue;
-    out.push(...runMarket(a, byAsset.get(a.id) ?? []).sales);
+    out.push(...runMarket(a, byAsset.get(a.id) ?? [], undefined, settings).sales);
   }
   return out.sort((a, b) => (a.date < b.date ? -1 : 1));
 }

@@ -4,18 +4,24 @@ import { Icon } from './Icon';
 import { actions, useData } from '../lib/store';
 import type { Asset, AssetClass, FixedKind, Indexer, Transaction } from '../lib/types';
 import { CLASS_LABEL, CLASS_ORDER, FIXED_KIND_LABEL, INDEXER_LABEL, TX_LABEL, isMarketClass } from '../lib/types';
-import { computePositions, sortTx, fixedAnnualRate } from '../lib/portfolio';
-import { fmtDate, money, parseNumber, percent, qty, signedPercent, today } from '../lib/format';
+import { computePositions, sortTx, fixedAnnualRate, currencyOf } from '../lib/portfolio';
+import { useLive, withLive } from '../lib/live';
+import { Flash } from './motion';
+import { CURRENCY_SYMBOL } from '../lib/types';
+import { fmtCurrency, fmtDate, money, parseNumber, percent, qty, signedPercent, today } from '../lib/format';
 import type { FormInit } from './TransactionForm';
 
 export function AssetDrawer({ assetId, onClose, onAdd }: { assetId: string; onClose: () => void; onAdd: (i: FormInit) => void }) {
   const data = useData();
-  const asset = data.assets.find((a) => a.id === assetId);
+  const live = useLive();
+  const stored = data.assets.find((a) => a.id === assetId);
+  const asset = useMemo(() => (stored ? withLive([stored], live)[0] : undefined), [stored, live]);
+  const settings = useMemo(() => (live.fx ? { ...data.settings, fx: { ...data.settings.fx, ...live.fx } } : data.settings), [data.settings, live.fx]);
   const [editing, setEditing] = useState(false);
   const txs = useMemo(() => sortTx(data.transactions.filter((t) => t.assetId === assetId)).reverse(), [data.transactions, assetId]);
   const pos = useMemo(
-    () => (asset ? computePositions([asset], txs, data.settings, today())[0] : null),
-    [asset, txs, data.settings],
+    () => (asset ? computePositions([asset], txs, settings, today())[0] : null),
+    [asset, txs, settings],
   );
   if (!asset || !pos) return null;
   const market = isMarketClass(asset.cls);
@@ -47,9 +53,18 @@ export function AssetDrawer({ assetId, onClose, onAdd }: { assetId: string; onCl
           <>
             <div className="grid grid-2" style={{ gap: 10 }}>
               {market && <Stat label="Quantidade" value={qty(pos.quantity)} />}
-              {market && <Stat label="Preço médio" value={money(pos.avgPrice)} />}
+              {market && <Stat label="Preço médio" value={<>{fmtCurrency(pos.avgPriceNative, pos.currency)}{pos.currency !== 'BRL' && <small className="muted"> · {money(pos.avgPrice)}</small>}</>} />}
+              {market && asset.currentPrice ? (
+                <Stat
+                  label={'Cotação' + (asset.prevClose ? ` · hoje ${signedPercent(asset.currentPrice / asset.prevClose - 1)}` : '')}
+                  value={<Flash value={asset.currentPrice}>{fmtCurrency(asset.currentPrice, pos.currency, { always: true })}</Flash>}
+                />
+              ) : null}
               <Stat label={market ? 'Custo total' : 'Valor aplicado'} value={money(pos.cost)} />
-              <Stat label={pos.valueIsEstimate && !market ? 'Valor estimado' : 'Valor atual'} value={money(pos.value)} />
+              <Stat
+                label={pos.valueIsEstimate && !market ? 'Valor estimado' : 'Valor atual'}
+                value={<>{money(pos.value)}{pos.currency !== 'BRL' && <small className="muted"> · {fmtCurrency(pos.valueNative, pos.currency)}</small>}</>}
+              />
               <Stat
                 label="Resultado"
                 value={<Delta value={result}>{money(result)} <span className="small">({signedPercent(pos.cost ? result / pos.cost : 0)})</span></Delta>}
@@ -145,7 +160,7 @@ function PriceEditor({ asset }: { asset: Asset }) {
           toast('Cotação atualizada');
         }}
       >
-        <input className="input num" style={{ maxWidth: 160 }} inputMode="decimal" placeholder={asset.currentPrice ? String(asset.currentPrice).replace('.', ',') : 'Preço atual'} value={val} onChange={(e) => setVal(e.target.value)} />
+        <input className="input num" style={{ maxWidth: 160 }} inputMode="decimal" placeholder={`Preço atual (${CURRENCY_SYMBOL[currencyOf(asset)]})`} value={val} onChange={(e) => setVal(e.target.value)} />
         <button className="btn sm">Atualizar preço</button>
         <span className="muted small">{asset.priceUpdatedAt ? `Atualizado em ${fmtDate(asset.priceUpdatedAt.slice(0, 10))}` : asset.currentPrice ? 'Cotação informada manualmente.' : 'Sem cotação — usando o custo.'}</span>
       </form>

@@ -5,7 +5,7 @@ import { computeTaxYear, bensEDireitos } from './tax';
 import { guessClass, normalizeTicker } from './classify';
 import { parseNumber, parseDate } from './format';
 
-const settings: Settings = { cdiRate: 10, ipcaRate: 4, selicRate: 10, theme: 'system', hideValues: false };
+const settings: Settings = { cdiRate: 10, ipcaRate: 4, selicRate: 10, theme: 'system', hideValues: false, fx: { USD: 5, EUR: 6 }, livePrices: false };
 const asset = (id: string, ticker: string, cls: Asset['cls'], extra: Partial<Asset> = {}): Asset => ({
   id, ticker, cls, createdAt: '2024-01-01', ...extra,
 });
@@ -129,5 +129,23 @@ describe('importers', () => {
     const again = buildPreview(rows, { assets: created, transactions: txs.map((t, i) => ({ ...t, id: String(i), createdAt: '' })) });
     expect(again.rows[0].duplicate).toBe(true);
     expect(prettyInstitution('NU INVEST CORRETORA DE VALORES S.A.')).toBe('NuInvest');
+  });
+});
+
+describe('moeda estrangeira', () => {
+  it('converts USD trades at the trade-date rate and values at today’s rate', () => {
+    const a = asset('u', 'AMD', 'EXTERIOR', { currentPrice: 150 });
+    const txs = [
+      tx('u', 'BUY', '2025-01-10', 10, 100, { fxRate: 6 }),
+      tx('u', 'SELL', '2025-06-10', 4, 120, { fxRate: 5.5 }),
+    ];
+    const [p] = computePositions([a], txs, settings, '2025-12-31');
+    expect(p.currency).toBe('USD');
+    expect(p.avgPriceNative).toBe(100);
+    expect(p.cost).toBe(6 * 100 * 6);
+    expect(p.valueNative).toBe(900);
+    expect(p.value).toBe(900 * 5);
+    const [s] = allSales([a], txs, settings);
+    expect(s.gain).toBeCloseTo(4 * 120 * 5.5 - 4 * 600, 6);
   });
 });

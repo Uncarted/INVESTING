@@ -8,6 +8,8 @@ export const DEFAULT_SETTINGS: Settings = {
   cdiRate: 14.9,
   ipcaRate: 4.5,
   selicRate: 15,
+  fx: { USD: 5.4, EUR: 6.3 },
+  livePrices: true,
   theme: 'dark',
   hideValues: false,
 };
@@ -120,6 +122,18 @@ export const actions = {
       { ...state, transactions: state.transactions.filter((t) => !set.has(t.id)) },
       `${ids.length} lançamento(s) excluído(s)`,
     );
+  },
+  /** Saves quotes without creating undo history. */
+  updatePrices(prices: Map<string, { price: number; prevClose?: number }>) {
+    let changed = false;
+    const now = new Date().toISOString();
+    const assets = state.assets.map((a) => {
+      const p = prices.get(a.ticker.toUpperCase());
+      if (!p || (p.price === a.currentPrice && p.prevClose === a.prevClose)) return a;
+      changed = true;
+      return { ...a, currentPrice: p.price, prevClose: p.prevClose ?? a.prevClose, priceUpdatedAt: now };
+    });
+    if (changed) commit({ ...state, assets });
   },
   updateSettings(patch: Partial<Settings>) {
     commit({ ...state, settings: { ...state.settings, ...patch } });

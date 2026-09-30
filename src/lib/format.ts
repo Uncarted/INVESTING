@@ -19,6 +19,19 @@ export const setHideValues = (v: boolean) => {
 
 export const money = (v: number | undefined, opts?: { always?: boolean }) =>
   v === undefined || Number.isNaN(v) ? '—' : hidden && !opts?.always ? 'R$ •••••' : brl.format(v);
+const fmtCache = new Map<string, Intl.NumberFormat>();
+/** Formats in any currency: fmtCurrency(12.5, 'USD') → "US$ 12,50". */
+export const fmtCurrency = (v: number | undefined, cur: string, opts?: { always?: boolean }) => {
+  if (v === undefined || Number.isNaN(v)) return '—';
+  if (cur === 'BRL') return money(v, opts);
+  const sym = cur === 'USD' ? 'US$' : cur === 'EUR' ? '€' : cur;
+  if (hidden && !opts?.always) return `${sym} •••••`;
+  const small = Math.abs(v) < 1 && v !== 0;
+  const key = cur + (small ? ':s' : '');
+  let f = fmtCache.get(key);
+  if (!f) fmtCache.set(key, (f = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: cur, minimumFractionDigits: 2, maximumFractionDigits: small ? 4 : 2 })));
+  return f.format(v);
+};
 export const moneyCompact = (v: number) => (hidden ? '•••' : brlCompact.format(v));
 export const qty = (v: number | undefined) => (v === undefined ? '—' : num.format(v));
 export const percent = (v: number | undefined) =>

@@ -100,8 +100,8 @@ export function AreaChart({ data, height = 220, compact }: { data: { month: stri
             <text key={d.month} className="tick" x={x(i)} y={H - 6} textAnchor={i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle'}>{fmtMonth(d.month)}</text>
           ) : null,
         )}
-        <path d={area} fill="url(#areaFill)" />
-        <path d={path} fill="none" stroke="var(--line)" strokeWidth={2} strokeLinejoin="round" />
+        <path d={area} fill="url(#areaFill)" className="area-fade" />
+        <path d={path} fill="none" stroke="var(--line)" strokeWidth={2} strokeLinejoin="round" pathLength={1} className="line-draw" />
         {h && hover !== null && (
           <g>
             <line x1={x(hover)} x2={x(hover)} y1={pad.t} y2={y(0)} stroke="var(--axis)" strokeDasharray="3 3" />

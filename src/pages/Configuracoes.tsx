@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { actions, useData } from '../lib/store';
 import { fetchRates } from '../lib/quotes';
-import { fmtDate, parseNumber } from '../lib/format';
+import { useLive, type FeedStatus } from '../lib/live';
+import { fmtDate, money, parseNumber } from '../lib/format';
 import { toast } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { exportBackup } from '../lib/exporters';
@@ -9,6 +10,7 @@ import { sampleData } from '../lib/sample';
 
 export function Configuracoes() {
   const data = useData();
+  const live = useLive();
   const s = data.settings;
   const [loading, setLoading] = useState(false);
 
@@ -63,9 +65,34 @@ export function Configuracoes() {
       </div>
 
       <div className="card card-pad stack">
-        <h2 style={{ fontSize: 15, margin: 0 }}>Cotações automáticas</h2>
+        <div className="row">
+          <h2 style={{ fontSize: 15, margin: 0 }}>Cotações ao vivo</h2>
+          <div className="spacer" />
+          <label className="row small text-2">
+            <input type="checkbox" checked={s.livePrices} onChange={(e) => actions.updateSettings({ livePrices: e.target.checked })} /> Ligado
+          </label>
+        </div>
+        <div className="feeds">
+          <Feed name="Ações dos EUA e exterior" detail="Finnhub · tempo real" status={live.status.us} />
+          <Feed name="B3 — ações, FIIs, ETFs, BDRs" detail="brapi · a cada minuto" status={live.status.b3} />
+          <Feed name="Cripto" detail="Binance · tempo real, sem cadastro" status={live.status.crypto} />
+          <Feed name="Dólar e euro" detail={`AwesomeAPI · US$ 1 = ${money(s.fx.USD, { always: true })} · € 1 = ${money(s.fx.EUR, { always: true })}`} status={live.status.fx} />
+        </div>
         <label className="field">
-          <span>Token da brapi.dev</span>
+          <span>Chave da Finnhub (ações americanas: AMD, TTWO, AAPL…)</span>
+          <input
+            className="input"
+            type="password"
+            defaultValue={s.finnhubToken ?? ''}
+            placeholder="cole aqui sua chave gratuita"
+            onBlur={(e) => actions.updateSettings({ finnhubToken: e.target.value.trim() || undefined })}
+          />
+          <span className="hint">
+            Grátis em <a href="https://finnhub.io/register" target="_blank" rel="noreferrer">finnhub.io/register</a> (1 minuto). Libera preço em tempo real e a busca por qualquer ação americana pelo nome.
+          </span>
+        </label>
+        <label className="field">
+          <span>Token da brapi (B3)</span>
           <input
             className="input"
             type="password"
@@ -73,7 +100,9 @@ export function Configuracoes() {
             placeholder="cole aqui seu token gratuito"
             onBlur={(e) => actions.updateSettings({ brapiToken: e.target.value.trim() || undefined })}
           />
-          <span className="hint">Crie uma conta grátis em brapi.dev para buscar cotações de ações, FIIs, ETFs, BDRs e cripto com um clique (botão “Atualizar cotações” na Carteira). O token fica salvo só neste navegador.</span>
+          <span className="hint">
+            Grátis em <a href="https://brapi.dev/dashboard" target="_blank" rel="noreferrer">brapi.dev</a>. As chaves ficam salvas só neste navegador.
+          </span>
         </label>
       </div>
 
@@ -116,6 +145,29 @@ export function Configuracoes() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+const STATUS: Record<FeedStatus, [string, string]> = {
+  off: ['Desligado', 'var(--muted)'],
+  connecting: ['Conectando…', 'var(--warn-ink)'],
+  live: ['Ao vivo', 'var(--pos)'],
+  polling: ['Atualizando', 'var(--pos)'],
+  error: ['Sem conexão', 'var(--neg)'],
+  'needs-key': ['Precisa de chave', 'var(--warn-ink)'],
+};
+
+function Feed({ name, detail, status }: { name: string; detail: string; status: FeedStatus }) {
+  const [label, color] = STATUS[status];
+  return (
+    <div className="feed">
+      <span className={'feed-dot' + (status === 'live' ? ' live' : '')} style={{ background: color }} />
+      <span>
+        <b>{name}</b>
+        <small>{detail}</small>
+      </span>
+      <span className="small" style={{ color }}>{label}</span>
     </div>
   );
 }

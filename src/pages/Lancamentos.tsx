@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { actions, useData } from '../lib/store';
 import { TX_LABEL, isMarketClass, type TxType } from '../lib/types';
-import { fmtDate, money, qty } from '../lib/format';
+import { fmtCurrency, fmtDate, money, qty } from '../lib/format';
+import { currencyOf } from '../lib/portfolio';
 import { ClassChip, Empty, toast } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { exportCSV, exportWorkbook } from '../lib/exporters';
@@ -103,9 +104,9 @@ export function Lancamentos({ onEdit }: { onEdit: (i: FormInit) => void }) {
                         <div className="row"><span className="ticker">{a?.ticker ?? '?'}</span>{a && <span className="hide-sm"><ClassChip cls={a.cls} /></span>}</div>
                       </td>
                       <td className="num">{t.type === 'SPLIT' ? `× ${qty(t.factor)}` : m && isTrade ? qty(t.quantity) : ''}</td>
-                      <td className="num">{m && isTrade ? money(t.price) : ''}</td>
+                      <td className="num">{m && isTrade ? fmtCurrency(t.price, a ? currencyOf(a) : 'BRL') : ''}</td>
                       <td className="num hide-sm">{t.fees ? money(t.fees) : ''}</td>
-                      <td className="num">{t.type === 'SPLIT' ? '' : money(t.quantity * t.price + (t.type === 'BUY' ? t.fees : -t.fees))}</td>
+                      <td className="num">{t.type === 'SPLIT' ? '' : fmtCurrency(t.quantity * t.price + (t.type === 'BUY' ? t.fees : -t.fees), a ? currencyOf(a) : 'BRL')}</td>
                       <td className="hide-sm text-2">{t.institution ?? ''}</td>
                       <td onClick={(e) => e.stopPropagation()}>
                         <button className="icon-btn" title="Excluir" onClick={() => { actions.deleteTransactions([t.id]); toast('Lançamento excluído', { undo: true }); }}>

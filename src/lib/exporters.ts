@@ -24,8 +24,11 @@ export function positionsRows(d: Data) {
       Nome: p.asset.name ?? '',
       Classe: CLASS_LABEL[p.asset.cls],
       Instituição: p.asset.institution ?? '',
+      Moeda: p.currency,
       Quantidade: isMarketClass(p.asset.cls) ? p.quantity : '',
-      'Preço médio': isMarketClass(p.asset.cls) ? r2(p.avgPrice) : '',
+      'Preço médio (moeda)': isMarketClass(p.asset.cls) ? r2(p.avgPriceNative) : '',
+      'Preço médio (R$)': isMarketClass(p.asset.cls) ? r2(p.avgPrice) : '',
+      'Valor (moeda)': r2(p.valueNative),
       'Custo total': r2(p.cost),
       'Preço atual': p.asset.currentPrice ?? '',
       'Valor atual': r2(p.value),
@@ -92,7 +95,7 @@ function addTaxSheets(wb: XLSX.WorkBook, d: Data, year: number) {
     `Bens e Direitos ${year}`,
   );
 
-  const tax = computeTaxYear(allSales(d.assets, d.transactions), year);
+  const tax = computeTaxYear(allSales(d.assets, d.transactions, d.settings), year);
   XLSX.utils.book_append_sheet(
     wb,
     sheet(

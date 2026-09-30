@@ -33,7 +33,10 @@ The main screen shows what matters at a glance: total value, gain/loss, dividend
   - Exports to Excel.
 - **Importar**: the B3 Área do Investidor statements (*Negociação* and *Movimentação*), which cover every broker at once, plus a template spreadsheet. You review everything before it's saved, and rows you already imported are skipped.
 - **Exportar**: positions and transactions to Excel or CSV, and a full JSON backup.
-- **Prices**: one-click update through [brapi.dev](https://brapi.dev) (free token). Fixed income is estimated from CDI/Selic/IPCA, and those rates can be fetched from the Banco Central.
+- **Live prices**: US and other foreign stocks (AMD, TTWO…) in real time through [Finnhub](https://finnhub.io/register) (free key), which also lets you search any US stock by name; B3 through [brapi.dev](https://brapi.dev) (free token), refreshed every minute; crypto in real time through Binance (no key); dollar and euro rates through AwesomeAPI. Keys go in *Ajustes*.
+- **Multiple currencies**: stocks priced in dollars or euros are entered in their own currency. The exchange rate on the trade date is filled in automatically, so cost and tax stay in reais. The home screen shows how much you hold in each currency.
+- **Allocation donut**: animated, and viewable by class, currency, asset or institution. Click a slice to filter your holdings.
+- Fixed income is estimated from CDI/Selic/IPCA, and those rates can be fetched from the Banco Central.
 - Undo for deletes, light/dark mode, and a "hide values" button.
 
 ## Limitations

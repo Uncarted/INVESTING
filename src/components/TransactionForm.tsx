@@ -1,12 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, toast } from './ui';
 import { Icon } from './Icon';
 import { actions, getData, newAsset, useData } from '../lib/store';
-import type { Asset, AssetClass, FixedKind, Indexer, Transaction, TxType } from '../lib/types';
+import type { Asset, AssetClass, Currency, FixedKind, Indexer, Transaction, TxType } from '../lib/types';
+import { CURRENCY_LABEL, CURRENCY_SYMBOL } from '../lib/types';
+import { fxOnDate, searchSymbols, type SymbolHit } from '../lib/live';
 import { CLASS_LABEL, CLASS_ORDER, FIXED_KIND_LABEL, INDEXER_LABEL, isMarketClass } from '../lib/types';
 import { guessClass, normalizeTicker } from '../lib/classify';
-import { money, parseNumber, qty, today } from '../lib/format';
-import { runMarket, groupTx } from '../lib/portfolio';
+import { fmtCurrency, money, parseNumber, qty, today } from '../lib/format';
+import { runMarket, groupTx, currencyOf } from '../lib/portfolio';
 
 type Mode = 'market' | 'fixed' | 'income' | 'event';
 
@@ -67,6 +69,11 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
   const [ratioTo, setRatioTo] = useState(editing?.factor && editing.factor >= 1 ? String(editing.factor) : '1');
 
   const [error, setError] = useState('');
+  // foreign currency
+  const [currencyPick, setCurrencyPick] = useState<Currency | ''>(initAsset?.currency ?? '');
+  const [fxRate, setFxRate] = useState(editing?.fxRate ? str(editing.fxRate) : '');
+  const fxTouched = useRef(!!editing?.fxRate);
+  const [hits, setHits] = useState<SymbolHit[]>([]);
 
   const existing = useMemo(() => {
     const t = ticker.trim().toUpperCase();
@@ -75,13 +82,41 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
 
   const guessed = guessClass(ticker);
   const effectiveCls: AssetClass = existing?.cls ?? (cls || guessed || 'ACAO');
+  const currency: Currency = existing
+    ? currencyOf(existing)
+    : mode !== 'market'
+      ? 'BRL'
+      : currencyPick || (effectiveCls === 'EXTERIOR' ? 'USD' : 'BRL');
+  const foreign = currency !== 'BRL';
+  const sym = CURRENCY_SYMBOL[currency];
+
+  // Fetch the exchange rate for the trade date (unless typed by hand).
+  useEffect(() => {
+    if (!foreign || fxTouched.current || !date) return;
+    let alive = true;
+    setFxRate(str(Math.round(data.settings.fx[currency as 'USD' | 'EUR'] * 10000) / 10000));
+    fxOnDate(currency as 'USD' | 'EUR', date).then((v) => {
+      if (alive && v && !fxTouched.current) setFxRate(str(Math.round(v * 10000) / 10000));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [foreign, currency, date, data.settings.fx]);
+
+  // Search any stock (US via Finnhub, B3 via brapi) as you type.
+  useEffect(() => {
+    if (mode !== 'market' || existing || ticker.trim().length < 2) return setHits([]);
+    const id = setTimeout(() => searchSymbols(ticker, data.settings).then(setHits), 300);
+    return () => clearTimeout(id);
+  }, [ticker, mode, existing, data.settings]);
 
   const held = useMemo(() => {
     if (!existing || !isMarketClass(existing.cls)) return null;
     const txs = (groupTx(data.transactions).get(existing.id) ?? []).filter((t) => t.id !== editing?.id);
-    const st = runMarket(existing, txs, date);
-    return { quantity: st.quantity, avg: st.quantity ? st.cost / st.quantity : 0 };
-  }, [existing, data.transactions, date, editing?.id]);
+    const st = runMarket(existing, txs, date, data.settings);
+    return { quantity: st.quantity, avg: st.quantity ? st.costNative / st.quantity : 0 };
+  }, [existing, data.transactions, date, editing?.id, data.settings]);
+  const fx = foreign ? parseNumber(fxRate) : 1;
 
   const q = parseNumber(quantity);
   const p = parseNumber(price);
@@ -114,13 +149,15 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
               ticker: tk, cls: fixedCls, institution: institution || undefined,
               fixed: fixedCls === 'RENDA_FIXA' ? { kind, indexer, rate: parseNumber(rate) || 0, maturity: maturity || undefined, issuer: issuer || undefined } : undefined,
             }
-          : { ticker: tk, name: name || undefined, cls: effectiveCls, institution: institution || undefined },
+          : { ticker: tk, name: name || undefined, cls: effectiveCls, currency: currency !== 'BRL' ? currency : undefined, institution: institution || undefined },
       );
       asset = created;
     }
 
     let tx: Omit<Transaction, 'id' | 'createdAt'>;
-    const base = { assetId: asset.id, date, institution: institution || undefined, notes: notes || undefined, source: editing?.source ?? ('manual' as const), importKey: editing?.importKey };
+    if (foreign && (mode === 'market' || mode === 'income') && !(fx > 0)) return setError('Informe a cotação da moeda no dia.');
+    const fxPart = foreign && (mode === 'market' || mode === 'income') ? { fxRate: fx } : {};
+    const base = { ...fxPart, assetId: asset.id, date, institution: institution || undefined, notes: notes || undefined, source: editing?.source ?? ('manual' as const), importKey: editing?.importKey };
     if (mode === 'market') {
       if (!(q > 0)) return setError('Quantidade inválida.');
       if (!(p >= 0) || !Number.isFinite(p)) return setError('Preço inválido.');
@@ -162,6 +199,8 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
       setAmount('');
       setNotes('');
       setName('');
+      setCurrencyPick('');
+      fxTouched.current = false;
     } else onClose();
   }
 
@@ -173,10 +212,20 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
   const assetField = (
     <AssetCombo
       label={mode === 'fixed' ? 'Investimento' : 'Ativo'}
-      placeholder={mode === 'fixed' ? 'Ex.: CDB Banco Inter 2027' : 'Ex.: PETR4, HGLG11, BTC'}
+      placeholder={mode === 'fixed' ? 'Ex.: CDB Banco Inter 2027' : 'Ticker ou nome — PETR4, AMD, TTWO, BTC…'}
       value={ticker}
       onChange={setTicker}
       suggestions={suggestions}
+      hits={hits}
+      onPickHit={(h) => {
+        setTicker(h.symbol);
+        setHits([]);
+        if (h.market === 'US') {
+          setCls('EXTERIOR');
+          setCurrencyPick('USD');
+          setName(h.description ? titleCase(h.description) : '');
+        }
+      }}
       autoFocus={!initAsset}
     />
   );
@@ -232,6 +281,12 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
                   <span className="hint">Ativo novo — classe detectada automaticamente.</span>
                 </label>
                 <label className="field">
+                  <span>Moeda</span>
+                  <select className="input" value={currency} onChange={(e) => { setCurrencyPick(e.target.value as Currency); fxTouched.current = false; }}>
+                    {(Object.keys(CURRENCY_LABEL) as Currency[]).map((c) => <option key={c} value={c}>{CURRENCY_SYMBOL[c]} · {CURRENCY_LABEL[c]}</option>)}
+                  </select>
+                </label>
+                <label className="field full">
                   <span>Nome (opcional)</span>
                   <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Petrobras PN" />
                 </label>
@@ -245,24 +300,32 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
             <label className="field">
               <span>Quantidade</span>
               <input className="input num" inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="100" />
-              {side === 'SELL' && held && <span className="hint">Em carteira: {qty(held.quantity)} · PM {money(held.avg, { always: true })}</span>}
+              {side === 'SELL' && held && <span className="hint">Em carteira: {qty(held.quantity)} · PM {fmtCurrency(held.avg, currency, { always: true })}</span>}
             </label>
             <label className="field">
-              <span>Preço unitário</span>
+              <span>Preço unitário ({sym})</span>
               <input className="input num" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0,00" />
             </label>
             <label className="field">
-              <span>Taxas e custos</span>
+              <span>Taxas e custos ({sym})</span>
               <input className="input num" inputMode="decimal" value={fees} onChange={(e) => setFees(e.target.value)} placeholder="0,00" />
               <span className="hint">Corretagem, emolumentos. Entram no preço médio.</span>
             </label>
+            {foreign && (
+              <label className="field">
+                <span>Cotação do {CURRENCY_LABEL[currency].toLowerCase()} no dia (R$)</span>
+                <input className="input num" inputMode="decimal" value={fxRate} onChange={(e) => { fxTouched.current = true; setFxRate(e.target.value); }} />
+                <span className="hint">Preenchida automaticamente pela data. Usada no custo em reais e no IR.</span>
+              </label>
+            )}
             <div className="field">
               <span>Total</span>
-              <div style={{ fontSize: 20, fontWeight: 650, paddingTop: 4 }}>{Number.isFinite(total) ? money(total, { always: true }) : '—'}</div>
+              <div style={{ fontSize: 20, fontWeight: 650, paddingTop: 4 }}>{Number.isFinite(total) ? fmtCurrency(total, currency, { always: true }) : '—'}</div>
+              {foreign && Number.isFinite(total) && fx > 0 && <span className="hint">≈ {money(total * fx, { always: true })}</span>}
               {side === 'SELL' && held && Number.isFinite(total) && q > 0 && (
                 <span className="hint">
                   Resultado estimado:{' '}
-                  <b className={total - held.avg * q >= 0 ? 'pos' : 'neg'}>{money(total - held.avg * q, { always: true })}</b>
+                  <b className={total - held.avg * q >= 0 ? 'pos' : 'neg'}>{fmtCurrency(total - held.avg * q, currency, { always: true })}</b>
                 </span>
               )}
             </div>
@@ -345,7 +408,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
               <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </label>
             <label className="field">
-              <span>Valor líquido recebido</span>
+              <span>Valor líquido recebido ({sym})</span>
               <input className="input num" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0,00" />
             </label>
             <InstitutionField value={institution} onChange={setInstitution} options={institutions} />
@@ -413,12 +476,29 @@ function InstitutionField({ value, onChange, options }: { value: string; onChang
   );
 }
 
+function titleCase(s: string) {
+  return s.toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\b(Inc|Corp|Ltd|Co|Sa|Plc)\b/g, (m) => m.toUpperCase());
+}
+
 function AssetCombo({
-  label, value, onChange, suggestions, placeholder, autoFocus,
-}: { label: string; value: string; onChange: (v: string) => void; suggestions: Asset[]; placeholder: string; autoFocus?: boolean }) {
+  label, value, onChange, suggestions, placeholder, autoFocus, hits = [], onPickHit,
+}: {
+  label: string; value: string; onChange: (v: string) => void; suggestions: Asset[]; placeholder: string; autoFocus?: boolean;
+  hits?: SymbolHit[]; onPickHit?: (h: SymbolHit) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const show = open && suggestions.length > 0 && !suggestions.some((s) => s.ticker === value);
+  const own = new Set(suggestions.map((s) => s.ticker.toUpperCase()));
+  const remote = hits.filter((h) => !own.has(h.symbol.toUpperCase()));
+  type Item = { kind: 'own'; a: Asset } | { kind: 'hit'; h: SymbolHit };
+  const items: Item[] = [...suggestions.map((a) => ({ kind: 'own' as const, a })), ...remote.map((h) => ({ kind: 'hit' as const, h }))];
+  const exact = suggestions.some((s) => s.ticker.toUpperCase() === value.trim().toUpperCase());
+  const show = open && items.length > 0 && !exact;
+  const pick = (it: Item) => {
+    if (it.kind === 'own') onChange(it.a.ticker);
+    else onPickHit?.(it.h);
+    setOpen(false);
+  };
   return (
     <label className="field combo">
       <span>{label}</span>
@@ -433,23 +513,35 @@ function AssetCombo({
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown' && !open) { setOpen(true); return; }
           if (!show) return;
-          if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, suggestions.length - 1)); }
+          if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, items.length - 1)); }
           if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
-          if (e.key === 'Enter') { e.preventDefault(); onChange(suggestions[active].ticker); setOpen(false); }
+          if (e.key === 'Enter') { e.preventDefault(); pick(items[active]); }
         }}
       />
       {show && (
         <div className="combo-list">
-          {suggestions.map((s, i) => (
-            <div key={s.id} className={'combo-item' + (i === active ? ' on' : '')} onMouseDown={() => { onChange(s.ticker); setOpen(false); }}>
-              <span className="dot" style={{ background: `var(--c-${s.cls})` }} />
-              <b>{s.ticker}</b>
-              <span className="muted small">{s.name ?? CLASS_LABEL[s.cls]}</span>
-            </div>
-          ))}
+          {items.map((it, i) =>
+            it.kind === 'own' ? (
+              <div key={it.a.id} className={'combo-item' + (i === active ? ' on' : '')} onMouseDown={() => pick(it)}>
+                <span className="dot" style={{ background: `var(--c-${it.a.cls})` }} />
+                <b>{it.a.ticker}</b>
+                <span className="muted small">{it.a.name ?? CLASS_LABEL[it.a.cls]}</span>
+                <span className="spacer" />
+                <span className="chip">na carteira</span>
+              </div>
+            ) : (
+              <div key={it.h.market + it.h.symbol} className={'combo-item' + (i === active ? ' on' : '')} onMouseDown={() => pick(it)}>
+                <span className="dot" style={{ background: it.h.market === 'US' ? 'var(--c-EXTERIOR)' : 'var(--c-ACAO)' }} />
+                <b>{it.h.symbol}</b>
+                <span className="muted small" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.h.market === 'US' ? titleCase(it.h.description) : it.h.description}</span>
+                <span className="spacer" />
+                <span className="chip">{it.h.market === 'US' ? 'EUA · US$' : 'B3 · R$'}</span>
+              </div>
+            ),
+          )}
         </div>
       )}
-      {value && !suggestions.some((s) => s.ticker.toUpperCase() === value.trim().toUpperCase()) && open && (
+      {value && !exact && open && !show && (
         <span className="hint"><Icon name="plus" size={12} /> Novo ativo</span>
       )}
     </label>
