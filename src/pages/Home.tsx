@@ -217,14 +217,18 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
           <span className="t-sub">≈ {money(income12m / 12)} {t('por mês', 'per month')} · {percent(total ? income12m / total : 0)} {t('a.a.', 'p.a.')}</span>
         </button>
         <button className={'tile reveal' + (nextDarf ? ' alert' : '')} style={{ ['--i' as string]: 4 }} onClick={() => open('ir')}>
-          <span className="t-label"><Icon name="receipt" size={14} /> {t('Imposto de renda', 'Income tax')}</span>
-          <span className="t-value">{nextDarf ? money(nextDarf.darf, { always: true }) : yearTax > 0.005 ? money(yearTax, { always: true }) : t('Nada a pagar', 'Nothing to pay')}</span>
+          <span className="t-label"><Icon name="receipt" size={14} /> {t(`IR sobre vendas de ${year}`, `Tax on ${year} sales`)}</span>
+          <span className="t-value"><CountUp value={yearTax} format={(v) => money(v, { always: true })} /></span>
           <span className="t-sub">
             {nextDarf
-              ? `DARF 6015 ${t('vence', 'due')} ${fmtDate(nextDarf.due)}`
-              : yearTax > 0.005
-                ? t(`estimado sobre vendas de ${year} · ver detalhes →`, `estimated on ${year} sales · details →`)
-                : t(`Relatório do IR ${year - 1} pronto →`, `${year - 1} tax report ready →`)}
+              ? t(`DARF de ${money(nextDarf.darf, { always: true })} vence ${fmtDate(nextDarf.due)}`, `DARF of ${money(nextDarf.darf, { always: true })} due ${fmtDate(nextDarf.due)}`)
+              : tax.exterior.tax > 0.005
+                ? yearTax - tax.exterior.tax > 0.005
+                  ? t(`${money(tax.exterior.tax, { always: true })} na declaração de ${year + 1} · resto via DARF →`, `${money(tax.exterior.tax, { always: true })} with your ${year + 1} return · rest via DARF →`)
+                  : t(`a pagar na declaração de ${year + 1} →`, `due with your ${year + 1} return →`)
+                : yearTax > 0.005
+                  ? t('pago mês a mês via DARF →', 'paid monthly via DARF →')
+                  : t('nenhum imposto sobre o que vendeu até agora', 'no tax on what you sold so far')}
           </span>
         </button>
         <button className="tile reveal" style={{ ['--i' as string]: 5 }} onClick={() => open('lancamentos')}>
