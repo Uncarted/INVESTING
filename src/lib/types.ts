@@ -7,10 +7,11 @@ export type AssetClass =
   | 'FUNDO'
   | 'CRIPTO'
   | 'EXTERIOR'
+  | 'CAIXA'
   | 'OUTRO';
 
 /** Classes valued by quantity × price. The rest are valued by amount (R$ aplicado). */
-export const MARKET_CLASSES: AssetClass[] = ['ACAO', 'FII', 'ETF', 'BDR', 'CRIPTO', 'EXTERIOR'];
+export const MARKET_CLASSES: AssetClass[] = ['ACAO', 'FII', 'ETF', 'BDR', 'CRIPTO', 'EXTERIOR', 'CAIXA'];
 export const isMarketClass = (c: AssetClass) => MARKET_CLASSES.includes(c);
 
 export const CLASS_LABEL: Record<AssetClass, string> = {
@@ -22,11 +23,12 @@ export const CLASS_LABEL: Record<AssetClass, string> = {
   FUNDO: 'Fundos',
   CRIPTO: 'Cripto',
   EXTERIOR: 'Ações EUA',
+  CAIXA: 'Dólar em conta',
   OUTRO: 'Outros',
 };
 
 export const CLASS_ORDER: AssetClass[] = [
-  'ACAO', 'FII', 'ETF', 'BDR', 'RENDA_FIXA', 'FUNDO', 'CRIPTO', 'EXTERIOR', 'OUTRO',
+  'ACAO', 'FII', 'ETF', 'BDR', 'RENDA_FIXA', 'FUNDO', 'CRIPTO', 'EXTERIOR', 'CAIXA', 'OUTRO',
 ];
 
 export type FixedKind =

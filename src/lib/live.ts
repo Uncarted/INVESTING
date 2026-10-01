@@ -80,7 +80,7 @@ export function withLive(assets: Asset[], live: LiveState): Asset[] {
 // ---------------------------------------------------------------------------
 
 const B3 = new Set(['ACAO', 'FII', 'ETF', 'BDR']);
-const isUS = (a: Asset) => currencyOf(a) !== 'BRL' && a.cls !== 'CRIPTO';
+const isUS = (a: Asset) => currencyOf(a) !== 'BRL' && a.cls !== 'CRIPTO' && a.cls !== 'CAIXA';
 
 let timers: number[] = [];
 let sockets: WebSocket[] = [];

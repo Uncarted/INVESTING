@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { actions, getData, normalize } from '../lib/store';
-import { bankName, buildCustodyPreview, buildPreview, readPdfLines, downloadTemplate, FORMAT_LABEL, materialize, parseOfx, readSheet, type ImportPreview } from '../lib/importers';
+import { bankName, buildPdfPreview, buildPreview, readPdfLines, downloadTemplate, FORMAT_LABEL, materialize, parseOfx, readSheet, type ImportPreview } from '../lib/importers';
 import { exportBackup } from '../lib/exporters';
 import { TX_LABEL, isMarketClass } from '../lib/types';
 import { fmtCurrency, fmtDate, qty } from '../lib/format';
@@ -33,7 +33,7 @@ export function Importar() {
       let p: ImportPreview;
       if (/\.pdf$/i.test(file.name)) {
         setBusy(t('Lendo o PDF…', 'Reading the PDF…'));
-        p = buildCustodyPreview(await readPdfLines(file).finally(() => setBusy('')), getData());
+        p = buildPdfPreview(await readPdfLines(file).finally(() => setBusy('')), getData());
       } else if (/\.ofx$/i.test(file.name)) {
         const { rows, bank } = parseOfx(await file.text());
         p = buildPreview(rows, getData(), { bank: bank ?? guessBank(file.name) });
@@ -55,7 +55,7 @@ export function Importar() {
     if (!preview || busy) return;
     const chosen = preview.rows.filter((r) => sel.has(r.key));
     // Dollar trades: store the PTAX-like rate of each trade date (needed for cost in reais and IR).
-    const usd = chosen.filter((r) => r.cls === 'EXTERIOR' && r.tx.fxRate === undefined);
+    const usd = chosen.filter((r) => (r.cls === 'EXTERIOR' || r.cls === 'CAIXA') && r.tx.fxRate === undefined);
     const dates = [...new Set(usd.map((r) => r.tx.date))];
     if (dates.length) {
       const rates = new Map<string, number>();
@@ -117,10 +117,10 @@ export function Importar() {
                   <tr key={r.key} style={r.duplicate ? { opacity: 0.5 } : undefined}>
                     <td><input type="checkbox" checked={sel.has(r.key)} onChange={() => setSel((s) => { const n = new Set(s); if (n.has(r.key)) n.delete(r.key); else n.add(r.key); return n; })} /></td>
                     <td className="text-2">{fmtDate(r.tx.date)}</td>
-                    <td>{r.balanceOnly ? t('Atualiza saldo', 'Balance update') : isMarketClass(r.cls) ? TX_LABEL[r.tx.type] : r.tx.type === 'BUY' ? t('Aplicação', 'Deposit') : t('Resgate', 'Redemption')}</td>
+                    <td>{r.balanceOnly ? t('Atualiza saldo', 'Balance update') : r.cls === 'CAIXA' ? (r.tx.type === 'BUY' ? t('Entrada', 'Deposit') : t('Saída', 'Withdrawal')) : isMarketClass(r.cls) ? TX_LABEL[r.tx.type] : r.tx.type === 'BUY' ? t('Aplicação', 'Deposit') : t('Resgate', 'Redemption')}</td>
                     <td><div className="row"><span className="ticker">{r.ticker}</span><ClassChip cls={r.cls} /></div></td>
-                    <td className="num">{isMarketClass(r.cls) && (r.tx.quantity !== 1 || r.tx.type === 'BUY' || r.tx.type === 'SELL') ? qty(r.tx.quantity) : ''}</td>
-                    <td className="num">{fmtCurrency(r.tx.price, r.cls === 'EXTERIOR' ? 'USD' : 'BRL', { always: true })}</td>
+                    <td className="num">{r.cls !== 'CAIXA' && isMarketClass(r.cls) && (r.tx.quantity !== 1 || r.tx.type === 'BUY' || r.tx.type === 'SELL') ? qty(r.tx.quantity) : ''}</td>
+                    <td className="num">{r.cls === 'CAIXA' ? fmtCurrency(r.tx.quantity, 'USD', { always: true }) : fmtCurrency(r.tx.price, r.cls === 'EXTERIOR' ? 'USD' : 'BRL', { always: true })}</td>
                     <td className="text-2">{r.tx.institution}</td>
                     <td className="small" style={{ color: 'var(--warn-ink)' }}>{r.duplicate ? t('já importado', 'already imported') : r.warning}</td>
                   </tr>
@@ -168,7 +168,7 @@ export function Importar() {
           </div>
           <div className="card card-pad">
             <h2 style={{ fontSize: 15, marginTop: 0 }}>{t('Corretora dos EUA (Nomad, Avenue…)', 'US broker (Nomad, Avenue…)')}</h2>
-            <p className="text-2" style={{ marginTop: 0 }}>{t('A B3 não vê o que você comprou lá fora. No app da corretora, exporte o histórico de transações/extrato em CSV ou Excel e arraste aqui. Compras, vendas e dividendos entram em dólar, com a cotação do dólar de cada dia buscada automaticamente.', "B3 can't see what you bought abroad. In your broker's app, export the transaction history/statement as CSV or Excel and drop it here. Buys, sells and dividends come in as dollars, with each day's dollar rate fetched automatically.")}</p>
+            <p className="text-2" style={{ marginTop: 0 }}>{t('A B3 não vê o que você tem lá fora. Na Nomad, baixe o extrato mensal da conta de investimentos (PDF) — entram suas ações, compras, vendas e dividendos — e o extrato da conta em dólar (PDF), que vira seu saldo em dólar. Também aceitamos CSV/Excel de outras corretoras.', "B3 can't see what you hold abroad. In Nomad, download the investment account's monthly statement (PDF) — your stocks, buys, sells and dividends come in — and the dollar account statement (PDF), which becomes your dollar balance. CSV/Excel from other brokers works too.")}</p>
           </div>
           <div className="card card-pad">
             <h2 style={{ fontSize: 15, marginTop: 0 }}>{t('Planilha modelo', 'Template spreadsheet')}</h2>

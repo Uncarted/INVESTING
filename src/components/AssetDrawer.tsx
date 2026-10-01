@@ -54,7 +54,7 @@ export function AssetDrawer({ assetId, onClose, onAdd }: { assetId: string; onCl
           <AssetEditor asset={asset} onDone={() => setEditing(false)} onDeleted={onClose} />
         ) : (
           <>
-            {market && <AssetChart asset={asset} settings={settings} txs={txs} avg={pos.avgPriceNative} cur={pos.currency} quantity={pos.quantity} />}
+            {market && asset.cls !== 'CAIXA' && <AssetChart asset={asset} settings={settings} txs={txs} avg={pos.avgPriceNative} cur={pos.currency} quantity={pos.quantity} />}
             <div className="grid grid-2" style={{ gap: 10 }}>
               {market && <Stat label={tr('Quantidade', 'Quantity')} value={qty(pos.quantity)} />}
               {market && <Stat label={tr('Preço médio', 'Average price')} value={<>{fmtCurrency(pos.avgPriceNative, pos.currency)}{pos.currency !== 'BRL' && <small className="muted"> · {money(pos.avgPrice)}</small>}</>} />}

@@ -328,19 +328,24 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
             const r = p.value - p.cost;
             const cur = p.currency;
             const dp = dayPct(p);
-            const unit = p.asset.cls === 'CRIPTO' ? '' : p.asset.cls === 'ACAO' || p.asset.cls === 'EXTERIOR' ? t(' ações', ' shares') : t(' cotas', ' units');
+            const unit = p.asset.cls === 'CRIPTO' || p.asset.cls === 'CAIXA' ? '' : p.asset.cls === 'ACAO' || p.asset.cls === 'EXTERIOR' ? t(' ações', ' shares') : t(' cotas', ' units');
             return (
               <div key={p.asset.id} className="h-row reveal" style={{ ['--i' as string]: Math.min(i, 14) }} onClick={() => openAsset(p.asset.id)}>
-                <Logo symbol={p.asset.ticker} market={marketOf(p.asset.cls, cur)} cls={p.asset.cls} />
+                <Logo symbol={p.asset.cls === 'CAIXA' ? 'US$' : p.asset.ticker} market={marketOf(p.asset.cls, cur)} cls={p.asset.cls} />
                 <span className="h-name">
                   <b>
                     {p.asset.ticker}
                     {cur !== 'BRL' && <em className="cur-tag">{cur}</em>}
                   </b>
-                  <span>{[m ? `${qty(p.quantity)}${unit}` : p.asset.name ?? CLASS_LABEL[p.asset.cls], p.asset.institution].filter(Boolean).join(' · ')}</span>
+                  <span>{[m ? (p.asset.cls === 'CAIXA' ? fmtCurrency(p.quantity, cur) : `${qty(p.quantity)}${unit}`) : p.asset.name ?? CLASS_LABEL[p.asset.cls], p.asset.institution].filter(Boolean).join(' · ')}</span>
                 </span>
                 <span className="h-cell hide-md">
-                  {m ? (
+                  {p.asset.cls === 'CAIXA' ? (
+                    <>
+                      <span className="price">{money(settings.fx[cur as 'USD' | 'EUR'] ?? 0, { always: true })}</span>
+                      <small>{t('dólar hoje', 'dollar today')}</small>
+                    </>
+                  ) : m ? (
                     p.asset.currentPrice ? (
                       <>
                         <Flash value={p.asset.currentPrice} className="price">{fmtCurrency(p.asset.currentPrice, cur, { always: true })}</Flash>
@@ -354,8 +359,8 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
                   )}
                 </span>
                 <span className="h-cell hide-md">
-                  {m ? fmtCurrency(p.avgPriceNative, cur, { always: true }) : money(p.cost)}
-                  <small>{m ? `${t('custo', 'cost')} ${money(p.cost)}` : t('aplicado', 'invested')}</small>
+                  {p.asset.cls === 'CAIXA' ? money(p.avgPrice, { always: true }) : m ? fmtCurrency(p.avgPriceNative, cur, { always: true }) : money(p.cost)}
+                  <small>{p.asset.cls === 'CAIXA' ? t('dólar médio', 'avg. dollar') : m ? `${t('custo', 'cost')} ${money(p.cost)}` : t('aplicado', 'invested')}</small>
                 </span>
                 <span className="h-cell">
                   <Flash value={p.value} className="h-value">{money(p.value)}</Flash>

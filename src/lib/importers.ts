@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import type { Asset, AssetClass, FixedIncomeInfo, Transaction, TxType } from './types';
 import { CLASS_LABEL, isMarketClass } from './types';
 import { guessClass, normalizeTicker } from './classify';
+import { groupTx, runMarket } from './portfolio';
 import { parseDate, parseNumber } from './format';
 import { newAsset } from './store';
 import { t } from './i18n';
@@ -22,6 +23,8 @@ export interface PreviewRow {
   balance?: { value: number; date: string };
   /** The asset already exists: only update its balance, don't add a transaction. */
   balanceOnly?: boolean;
+  /** Extra fields for a new asset (e.g. currency, fixed price for cash). */
+  assetExtra?: Partial<Asset>;
 }
 
 export interface ImportPreview {
@@ -523,10 +526,160 @@ export function buildCustodyPreview(lines: string[], existing: { assets: Asset[]
   if (!out.length) skipped[t('Nenhuma posição reconhecida no PDF', 'No positions recognized in the PDF')] = 1;
   return { format: 'custody', rows: out, skipped };
 }
+// ---------------------------------------------------------------------------
+// Nomad (and other US brokers cleared by Apex): monthly account statement PDF.
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const US_DATE = /^\d{2}\/\d{2}\/\d{4}$/;
+const TICKER = /^[A-Z][A-Z.]{0,5}$/;
+const usNum = (s: string) => {
+  const neg = /^\(.*\)$/.test(s.trim()) || s.trim().startsWith('-');
+  return Math.abs(Number(s.replace(/[$,()\s-]/g, ''))) * (neg ? -1 : 1);
+};
+const isNum = (s: string) => /^\(?-?\$?[\d,]+(\.\d+)?\)?$/.test(s.trim());
+const usIso = (s: string) => (ISO_DATE.test(s) ? s : US_DATE.test(s) ? `${s.slice(6)}-${s.slice(0, 2)}-${s.slice(3, 5)}` : '');
+
+export function buildBrokerStatementPreview(lines: string[], existing: { assets: Asset[]; transactions: Transaction[] }): ImportPreview {
+  const text = lines.join('\n');
+  const period = text.match(/Statement Date:?\s*\|?\s*(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})/i);
+  const date = period?.[2] ?? new Date().toISOString().slice(0, 10);
+  const broker = /nomad/i.test(text) ? 'Nomad' : /avenue/i.test(text) ? 'Avenue' : t('Corretora EUA', 'US broker');
+  const keys = new Set(existing.transactions.map((x) => x.importKey).filter(Boolean));
+  const out: PreviewRow[] = [];
+  const skipped: Record<string, number> = {};
+  const k = keyer('apex');
+  const holdings: { symbol: string; qty: number; price: number; desc: string }[] = [];
+  const divs = new Map<string, { date: string; symbol: string; amount: number }>();
+  let section: 'portfolio' | 'trades' | 'pending' | 'other' | null = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\W*PORTFOLIO\b/i.test(line)) { section = 'portfolio'; continue; }
+    if (/TRADING ACTIVITY PENDING/i.test(line)) { section = 'pending'; continue; }
+    if (/^\W*TRADING ACTIVIT/i.test(line)) { section = 'trades'; continue; }
+    if (/NON-TRADING ACTIVITY/i.test(line)) { section = 'other'; continue; }
+    if (/Investment objectives|Disclosures/i.test(line)) section = null;
+    const cells = cellsOf(line);
+    if (!section || cells.length < 3) continue;
+    const symIdx = cells.findIndex((c, j) => j > 0 && TICKER.test(c) && !/^(USD|N\/A|BUY|SELL|DIV)$/.test(c));
+    if (section === 'portfolio' && symIdx > 0) {
+      const nums = cells.slice(symIdx + 1).filter(isNum).map(usNum);
+      // Quantity · securities on loan · price · market value · previous value · % change · % of total
+      if (nums.length >= 3 && nums[0] > 0) holdings.push({ symbol: cells[symIdx], qty: nums[0], price: nums[2] > 0 ? nums[2] : nums[1], desc: cells.slice(0, symIdx).join(' ') });
+    } else if (section === 'trades' && symIdx > 0) {
+      const act = cells[0].toUpperCase();
+      const type: TxType | null = /BUY|BOT|BOUGHT|PURCH/.test(act) ? 'BUY' : /SELL|SLD|SOLD/.test(act) ? 'SELL' : null;
+      const tradeDate = usIso(cells.find((c) => ISO_DATE.test(c) || US_DATE.test(c)) ?? '');
+      const nums = cells.slice(symIdx + 1).filter(isNum).map(usNum);
+      if (!tradeDate) continue; // header / "No Information" lines
+      if (!type || nums.length < 2) {
+        skip(t('Linha de negociação não reconhecida', 'Unrecognized trade line'));
+        continue;
+      }
+      const [quantity, price, , commission] = [Math.abs(nums[0]), Math.abs(nums[1]), nums[2], Math.abs(nums[3] ?? 0)];
+      const symbol = cells[symIdx];
+      const key = k([tradeDate, symbol, type, quantity, price]);
+      out.push({
+        key, ticker: symbol, cls: 'EXTERIOR', name: cells.slice(1, symIdx).filter((c) => !ISO_DATE.test(c) && !US_DATE.test(c)).join(' ') || undefined,
+        tx: { type, date: tradeDate, quantity, price, fees: commission || 0, institution: broker, source: 'csv', importKey: key },
+        duplicate: keys.has(key),
+      });
+    } else if (section === 'other') {
+      const d = usIso(cells.find((c) => ISO_DATE.test(c) || US_DATE.test(c)) ?? '');
+      const kind = cells.join(' ').toUpperCase();
+      const nums = cells.filter(isNum).map(usNum);
+      const symbol = symIdx > 0 ? cells[symIdx] : '';
+      if (!d || !symbol || !nums.length) continue;
+      const amount = nums[nums.length - 1];
+      if (!/DIV|TAX|WITHH|NRA/.test(kind)) continue;
+      const id = `${d}|${symbol}`;
+      const cur = divs.get(id) ?? { date: d, symbol, amount: 0 };
+      cur.amount += /TAX|WITHH|NRA/.test(kind) ? -Math.abs(amount) : Math.abs(amount);
+      divs.set(id, cur);
+    }
+  }
+  function skip(r: string) {
+    skipped[r] = (skipped[r] ?? 0) + 1;
+  }
+
+  for (const d of divs.values()) {
+    if (d.amount <= 0.004) continue;
+    const key = `apex-div|${d.date}|${d.symbol}|${d.amount.toFixed(2)}`;
+    out.push({ key, ticker: d.symbol, cls: 'EXTERIOR', tx: { type: 'DIVIDEND', date: d.date, quantity: 1, price: Math.round(d.amount * 100) / 100, fees: 0, institution: broker, source: 'csv', importKey: key }, duplicate: keys.has(key) });
+  }
+
+  // Positions: if Wallet has fewer shares than the statement, add the missing ones at the statement price.
+  const byAsset = groupTx(existing.transactions);
+  for (const h of holdings) {
+    const asset = existing.assets.find((a) => a.ticker.toUpperCase() === h.symbol);
+    const have = asset ? runMarket(asset, byAsset.get(asset.id) ?? [], date, { fx: { USD: 1, EUR: 1 } } as never).quantity : 0;
+    const imported = out.filter((r) => r.ticker === h.symbol && !r.duplicate && (r.tx.type === 'BUY' || r.tx.type === 'SELL')).reduce((s, r) => s + (r.tx.type === 'BUY' ? r.tx.quantity : -r.tx.quantity), 0);
+    const diff = Math.round((h.qty - have - imported) * 1e6) / 1e6;
+    if (Math.abs(diff) < 1e-6) {
+      skip(t(`${h.symbol}: já confere com o extrato (${h.qty})`, `${h.symbol}: already matches the statement (${h.qty})`));
+      continue;
+    }
+    if (diff < 0) {
+      skip(t(`${h.symbol}: o Wallet tem ${have + imported}, o extrato mostra ${h.qty} — falta lançar alguma venda`, `${h.symbol}: Wallet has ${have + imported}, the statement shows ${h.qty} — a sale is missing`));
+      continue;
+    }
+    const key = `apex-pos|${date}|${h.symbol}|${diff}`;
+    out.push({
+      key, ticker: h.symbol, cls: 'EXTERIOR', name: h.desc ? h.desc.replace(/\s+COM$/i, '') : undefined,
+      tx: { type: 'BUY', date, quantity: diff, price: h.price, fees: 0, institution: broker, source: 'csv', importKey: key, notes: t('Posição do extrato mensal — preço do fim do mês como custo', 'Monthly statement position — month-end price as cost') },
+      duplicate: keys.has(key),
+      warning: t('Custo = preço no fim do mês. Se souber o preço que pagou, edite depois (ou importe o extrato do mês da compra).', 'Cost = month-end price. If you know what you paid, edit it later (or import the statement from the month you bought).'),
+    });
+  }
+  return { format: 'apex', rows: out, skipped };
+}
+
+/** Nomad banking account (dollars in the account): the balance at the end of the period. */
+export function buildUsdCashPreview(lines: string[], existing: { assets: Asset[]; transactions: Transaction[] }): ImportPreview {
+  const text = lines.join('\n');
+  const MES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  const end = text.match(/at[ée]\s+(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})/i);
+  const date = end ? `${end[3]}-${String(MES.indexOf(end[2].toLowerCase()) + 1).padStart(2, '0')}-${end[1].padStart(2, '0')}` : new Date().toISOString().slice(0, 10);
+  const li = lines.findIndex((l) => /Saldo final/i.test(l));
+  const vals = li >= 0 ? (lines[li + 1] ?? '').match(/US\$\s*[\d.]+,\d{2}/g) ?? [] : [];
+  const skipped: Record<string, number> = {};
+  if (!vals.length) return { format: 'usd-cash', rows: [], skipped: { [t('Saldo não encontrado', 'Balance not found')]: 1 } };
+  const balance = parseNumber(vals[0].replace('US$', ''));
+  const broker = /nomad/i.test(text) ? 'Nomad' : t('Conta EUA', 'US account');
+  const ticker = `${t('Dólar', 'Dollars')} ${broker}`;
+  const asset = existing.assets.find((a) => a.cls === 'CAIXA' && a.ticker.toLowerCase() === ticker.toLowerCase());
+  const have = asset ? runMarket(asset, groupTx(existing.transactions).get(asset.id) ?? [], date, { fx: { USD: 1, EUR: 1 } } as never).quantity : 0;
+  const diff = Math.round((balance - have) * 100) / 100;
+  if (Math.abs(diff) < 0.005) return { format: 'usd-cash', rows: [], skipped: { [t(`Saldo já confere: US$ ${vals[0].replace('US$', '').trim()}`, `Balance already matches`)]: 1 } };
+  const key = `usd-cash|${broker}|${date}|${balance}`;
+  return {
+    format: 'usd-cash',
+    rows: [{
+      key, ticker, cls: 'CAIXA',
+      tx: { type: diff > 0 ? 'BUY' : 'SELL', date, quantity: Math.abs(diff), price: 1, fees: 0, institution: broker, source: 'csv', importKey: key, notes: t(`Saldo do extrato: ${vals[0]}`, `Statement balance: ${vals[0]}`) },
+      duplicate: existing.transactions.some((x) => x.importKey === key),
+      assetExtra: { currency: 'USD', currentPrice: 1 },
+      warning: asset ? t(`Ajusta o saldo de US$ ${have.toFixed(2)} para ${vals[0]}`, `Adjusts the balance from US$ ${have.toFixed(2)} to ${vals[0]}`) : undefined,
+    }],
+    skipped,
+  };
+}
+
+/** Which kind of PDF is this? */
+export function buildPdfPreview(lines: string[], existing: { assets: Asset[]; transactions: Transaction[] }): ImportPreview {
+  const text = lines.join('\n');
+  if (/Extrato de Cust[óo]dia|Cust[óo]dia em/i.test(text)) return buildCustodyPreview(lines, existing);
+  if (/Account Statement/i.test(text) && /PORTFOLIO|TRADING ACTIVIT/i.test(text)) return buildBrokerStatementPreview(lines, existing);
+  if (/conta dep[óo]sito|Saldo final do per[íi]odo/i.test(text) && /US\$/.test(text)) return buildUsdCashPreview(lines, existing);
+  return { format: 'desconhecido', rows: [], skipped: {} };
+}
+
 const numFmt = (n: number) => String(Math.round(n * 100) / 100).replace('.', ',');
 
 export const FORMAT_LABEL = (): Record<string, string> => ({
   custody: t('Extrato de custódia (PDF) — posição de hoje', 'Custody statement (PDF) — current holdings'),
+  apex: t('Extrato mensal da corretora dos EUA (PDF)', 'US broker monthly statement (PDF)'),
+  'usd-cash': t('Saldo em dólar na conta (PDF)', 'Dollar account balance (PDF)'),
   negociacao: 'B3 — Negociação',
   movimentacao: 'B3 — Movimentação',
   template: t('Planilha modelo', 'Template spreadsheet'),
@@ -546,6 +699,7 @@ export function materialize(rows: PreviewRow[], assets: Asset[]) {
     if (!a) {
       const tesouro = r.cls === 'RENDA_FIXA' && r.ticker.toLowerCase().startsWith('tesouro');
       a = newAsset({
+        ...r.assetExtra,
         ticker: r.ticker,
         name: r.name,
         cls: r.cls,

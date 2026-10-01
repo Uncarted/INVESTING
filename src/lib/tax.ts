@@ -189,6 +189,8 @@ function irCode(a: Asset): { group: string; code: string; label: string } {
   switch (a.cls) {
     case 'ACAO':
       return { group: '03', code: '01', label: 'Ações (inclusive listadas em bolsa)' };
+    case 'CAIXA':
+      return { group: '06', code: '01', label: 'Depósito em conta corrente ou conta pagamento — exterior' };
     case 'EXTERIOR':
       return { group: '03', code: '01', label: 'Ações — localização: exterior' };
     case 'FII':
@@ -228,6 +230,10 @@ function describe(a: Asset, p: Position): string {
   const inst = a.institution ? `, custodiado(a) em ${a.institution}` : '';
   const cnpj = a.cnpj ? ` CNPJ ${a.cnpj}.` : '';
   const name = a.name ? ` - ${a.name}` : '';
+  if (a.cls === 'CAIXA') {
+    const usd = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'USD' }).format(p.quantity);
+    return `Saldo de ${usd} em conta${inst ? inst.replace(', custodiado(a) em', ' na') : ''} no exterior. Custo em reais ${ptMoney(p.cost)}.`;
+  }
   if (isMarketClass(a.cls)) {
     const unit =
       a.cls === 'ACAO' || a.cls === 'EXTERIOR' ? 'ações' : a.cls === 'CRIPTO' ? 'unidades de' : 'cotas de';

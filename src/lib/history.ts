@@ -110,7 +110,7 @@ const LS = 'wallet:px:';
 
 /** Bars for an asset (native currency), oldest first. Never throws: failures return []. */
 export function priceSeries(a: Asset, from: string, grain: Grain, s: Settings): Promise<Bar[]> {
-  if (!isMarketClass(a.cls)) return Promise.resolve([]);
+  if (!isMarketClass(a.cls) || a.cls === 'CAIXA') return Promise.resolve([]);
   const kind = kindOf(a);
   const id = `${kind}:${a.ticker.toUpperCase()}:${grain}`;
   const day = today();

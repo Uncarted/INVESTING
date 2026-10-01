@@ -280,3 +280,28 @@ describe('extrato de custódia (PDF)', () => {
     expect(materialize(again.rows, m.created).txs).toHaveLength(0);
   });
 });
+
+describe('extrato mensal Nomad (PDF)', () => {
+  it('lê posições, negociações e dividendos', async () => {
+    const { buildPdfPreview } = await import('./importers');
+    const lines = [
+      'Nomad Investment Services Inc.', ' | Account Statement', 'Statement Date: | 2026-03-01 - 2026-03-31',
+      ' | PORTFOLIO',
+      ' | Description |   | Symbol | Quantity |   | Securities on | Price($) |   | Market Value',
+      ' | APPLE INC COM |   | AAPL | 3 |   | 0 |   | 200.00 |   | 600.00 |   | 0.00 |   | 0 |   | 100.00',
+      ' | TRADING ACTIVITIES',
+      'Type | Date | Date | CUSIP | Amount($) | Fee($) | Fees($)',
+      ' | BUY | 2026-03-10 | 2026-03-12 | APPLE INC COM | AAPL | 2 | 190.00 | (380.00) | 0.00',
+      ' | NON-TRADING ACTIVITY',
+      ' | 2026-03-20 | DIV | APPLE INC CASH DIV | AAPL | 0 | 1.00',
+      ' | 2026-03-20 | NRA TAX | APPLE INC NRA WITHHOLD | AAPL | 0 | (0.30)',
+    ];
+    const p = buildPdfPreview(lines, { assets: [], transactions: [] });
+    expect(p.format).toBe('apex');
+    expect(p.rows.map((r) => [r.tx.type, r.tx.date, r.ticker, r.tx.quantity, r.tx.price])).toEqual([
+      ['BUY', '2026-03-10', 'AAPL', 2, 190],
+      ['DIVIDEND', '2026-03-20', 'AAPL', 1, 0.7],
+      ['BUY', '2026-03-31', 'AAPL', 1, 200], // the share bought before this statement
+    ]);
+  });
+});
