@@ -10,7 +10,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const DAILY_LIMIT = 20;
-const MODELS = [Deno.env.get('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-2.5-flash'].filter(Boolean) as string[];
+const MODELS = [Deno.env.get('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash'].filter(Boolean) as string[];
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -19,7 +19,8 @@ const cors = {
 };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-const PROMPT = `You read Brazilian and US brokerage and bank documents (trade confirmations, notas de corretagem,
+const PROMPT = `Answer ONLY with JSON shaped like {"institution":..., "statementDate":..., "items":[{"kind":"trade|dividend|position|cash", "date", "side":"BUY|SELL", "ticker", "name", "assetType":"stock_br|fii|etf|bdr|stock_us|crypto|fixed_income|fund|cash|other", "quantity", "price", "amount", "fees", "currency":"BRL|USD|EUR", "rate", "maturity", "dividendType":"DIVIDEND|JCP|INCOME"}]}.
+You read Brazilian and US brokerage and bank documents (trade confirmations, notas de corretagem,
 monthly statements, custody statements, bank statements) and extract investment data.
 Return every item you find:
 - kind "trade": a buy or sell of a stock, REIT (FII), ETF, BDR, crypto, or a deposit/withdrawal (aplicação/resgate) in a fixed-income product.
@@ -89,22 +90,49 @@ Deno.serve(async (req) => {
     };
 
     let lastError = '';
-    for (const model of MODELS) {
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    const call = async (model: string, withSchema: boolean) => {
+      const cfg = withSchema ? body.generationConfig : { responseMimeType: 'application/json', temperature: 0 };
+      return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, generationConfig: cfg }),
       });
-      if (!r.ok) {
-        lastError = `${model}: ${r.status} ${(await r.text()).slice(0, 300)}`;
-        if (r.status === 429) return json({ error: 'gemini-quota', detail: lastError }, 429);
-        continue; // try the next model name
+    };
+    // Model names change over time: try the configured/known ones, then ask Google which "flash" models exist.
+    const models = [...MODELS];
+    try {
+      const list = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key } }).then((r) => r.json());
+      for (const m of list?.models ?? []) {
+        const name = String(m.name ?? '').replace(/^models\//, '');
+        if (/flash/i.test(name) && !/image|tts|audio|live|thinking-exp|lite/i.test(name) && (m.supportedGenerationMethods ?? []).includes('generateContent') && !models.includes(name)) models.push(name);
       }
-      const out = await r.json();
-      const raw = out?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('') ?? '';
-      const parsed = JSON.parse(raw);
-      await admin.from('ai_usage').upsert({ user_id: uid, day, count: used + 1 });
-      return json({ ...parsed, model, used: used + 1, limit: DAILY_LIMIT });
+    } catch {
+      /* listing is optional */
+    }
+    for (const model of models.slice(0, 6)) {
+      for (const withSchema of [true, false]) {
+        const r = await call(model, withSchema);
+        if (!r.ok) {
+          lastError = `${model}${withSchema ? '' : ' (no schema)'}: ${r.status} ${(await r.text()).slice(0, 300)}`;
+          if (r.status === 429) return json({ error: 'gemini-quota', detail: lastError }, 429);
+          if (r.status === 401 || r.status === 403) return json({ error: 'gemini-key', detail: lastError }, 502);
+          if (r.status === 400 && withSchema) continue; // schema not accepted by this model: retry without it
+          break; // 404 etc.: next model
+        }
+        const out = await r.json();
+        const raw: string = out?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('') ?? '';
+        const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+        let parsed: { items?: unknown[] };
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch {
+          lastError = `${model}: answer was not JSON (${out?.candidates?.[0]?.finishReason ?? '?'}) ${cleaned.slice(0, 200)}`;
+          continue;
+        }
+        if (!Array.isArray(parsed.items)) parsed = { items: [] };
+        await admin.from('ai_usage').upsert({ user_id: uid, day, count: used + 1 });
+        return json({ ...parsed, model, used: used + 1, limit: DAILY_LIMIT });
+      }
     }
     return json({ error: 'gemini-failed', detail: lastError }, 502);
   } catch (e) {

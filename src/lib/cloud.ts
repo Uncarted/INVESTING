@@ -256,13 +256,24 @@ export async function aiReadDocument(text: string): Promise<{ ok: true; result: 
   const { data, error } = await supabase.functions.invoke('read-document', { body: { text } });
   if (!error && data?.items) return { ok: true, result: data as AiResult };
   let code = (data as { error?: string } | null)?.error ?? '';
+  let detail = (data as { detail?: string } | null)?.detail ?? '';
   try {
     // functions.invoke puts the response of a non-2xx call in error.context
     const ctx = (error as { context?: Response } | null)?.context;
-    if (!code && ctx?.json) code = (await ctx.json())?.error ?? '';
+    if (!code && ctx?.text) {
+      const body = await ctx.text();
+      try {
+        const j = JSON.parse(body);
+        code = j?.error ?? '';
+        detail = j?.detail ?? j?.message ?? body;
+      } catch {
+        detail = body;
+      }
+    }
   } catch {
-    /* not JSON */
+    /* no body */
   }
+  if (!detail && error) detail = String(error.message ?? error);
   const status = (error as { context?: { status?: number } } | null)?.context?.status;
   if (status === 404 || /not found|FunctionsFetchError|Failed to send/i.test(String(error?.message ?? '')))
     return { ok: false, reason: t('A leitura com IA ainda não foi instalada no Supabase.', "AI reading isn't set up in Supabase yet.") };
@@ -272,5 +283,9 @@ export async function aiReadDocument(text: string): Promise<{ ok: true; result: 
     'gemini-quota': t('A cota grátis do Gemini acabou por hoje. Tente mais tarde.', "Gemini's free quota is used up for now. Try later."),
     'not-signed-in': t('Entre na sua conta para usar a leitura com IA.', 'Sign in to use AI reading.'),
   };
-  return { ok: false, reason: reasons[code] ?? t('A IA não conseguiu ler esse documento.', "The AI couldn't read this document.") };
+  reasons['gemini-key'] = t('O Google recusou a chave do Gemini — confira o segredo GEMINI_API_KEY no Supabase.', 'Google rejected the Gemini key — check the GEMINI_API_KEY secret in Supabase.');
+  const base = reasons[code] ?? t('A IA não conseguiu ler esse documento.', "The AI couldn't read this document.");
+  // Show the technical reason too, so problems can be fixed.
+  const tech = [code, status ? `HTTP ${status}` : '', detail].filter(Boolean).join(' · ').slice(0, 400);
+  return { ok: false, reason: tech && !reasons[code] ? `${base} (${tech})` : base };
 }
