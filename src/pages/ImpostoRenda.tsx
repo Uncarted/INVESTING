@@ -22,10 +22,9 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
   const data = useData();
   const cur = Number(today().slice(0, 4));
   const years = useMemo(() => {
-    const s = new Set(data.transactions.map((t) => Number(t.date.slice(0, 4))));
-    s.add(cur);
-    s.add(cur - 1);
-    return [...s].sort((a, b) => b - a);
+    // Every year from the first transaction until now (a year without trades still has assets to declare).
+    const first = Math.min(cur - 1, ...data.transactions.map((t) => Number(t.date.slice(0, 4))).filter((y) => y > 1990));
+    return Array.from({ length: cur - first + 1 }, (_, i) => cur - i);
   }, [data.transactions, cur]);
   const [year, setYear] = useState(cur - 1);
   const [tab, setTab] = useState<Tab>('bens');
@@ -41,7 +40,13 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
     <div className="stack">
       <div className="row wrap">
         <div className="seg">
-          {years.map((y) => <button key={y} className={y === year ? 'on' : ''} onClick={() => setYear(y)}>{y}</button>)}
+          {years.slice(0, 4).map((y) => <button key={y} className={y === year ? 'on' : ''} onClick={() => setYear(y)}>{y}</button>)}
+          {years.length > 4 && (
+            <select className={'seg-select' + (years.indexOf(year) >= 4 ? ' on' : '')} value={years.indexOf(year) >= 4 ? year : ''} onChange={(e) => setYear(Number(e.target.value))} aria-label={t('Anos anteriores', 'Earlier years')}>
+              <option value="" disabled>{t('Anteriores', 'Earlier')}</option>
+              {years.slice(4).map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+          )}
         </div>
         <span className="muted small">{year < cur ? t(`Declaração entregue em ${year + 1}`, `Return filed in ${year + 1}`) : t('Ano em andamento', 'Year in progress')}</span>
         <div className="spacer" />

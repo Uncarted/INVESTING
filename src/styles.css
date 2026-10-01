@@ -1,5 +1,5 @@
 /* ============================================================
-   carteira. — design tokens
+   wallet. — design tokens
    Dark-first, ink + lime. Light mode is a warm paper variant.
    ============================================================ */
 :root {
@@ -523,3 +523,89 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
   .h-row { padding: 12px 14px; gap: 10px; }
   .panel-head h1 { font-size: 32px; }
 }
+
+/* ---------- Hero: performance + rates ---------- */
+.hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); align-items: center; }
+.perf { display: flex; align-items: stretch; margin-top: 6px; }
+.perf-item { display: flex; flex-direction: column; gap: 3px; background: none; border: 0; padding: 6px 2px 9px; cursor: pointer; text-align: left; color: inherit; font: inherit; position: relative; }
+.perf-item::after { content: ''; position: absolute; left: 2px; right: 2px; bottom: 0; height: 1.5px; border-radius: 2px; background: currentColor; transform: scaleX(0); transform-origin: left; transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); color: var(--text-2); }
+.perf-item:hover::after { transform: scaleX(0.35); }
+.perf-item.on::after { transform: scaleX(1); }
+.perf-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 500; }
+.perf-val { display: flex; align-items: baseline; gap: 8px; font-size: 19px; font-weight: 620; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.perf-val small { font-size: 13px; font-weight: 550; opacity: 0.8; }
+.perf-sep { width: 1px; background: var(--border-strong); margin: 10px 22px 10px; }
+.fx-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin-top: 14px; font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.fx-q { display: inline-flex; align-items: baseline; gap: 5px; font-weight: 600; }
+.fx-q small { font-size: 11.5px; font-weight: 550; }
+.fx-hold { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 0; color: var(--text-2); font: inherit; font-weight: 550; cursor: pointer; }
+.fx-hold:hover { color: var(--text); }
+.fx-hold .dot { width: 7px; height: 7px; border-radius: 50%; }
+
+/* ---------- Portfolio chart ---------- */
+.hero-chart { padding: 16px 16px 12px; min-width: 0; }
+.pchart-head { display: flex; align-items: flex-start; gap: 10px; padding: 0 2px 8px; }
+.pchart-gain { font-size: 22px; font-weight: 640; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; margin-top: 3px; transition: color 0.3s; }
+.pchart-gain span { font-size: 14px; font-weight: 560; opacity: 0.8; margin-left: 4px; }
+.pchart-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.range-pills { display: inline-flex; gap: 1px; flex-wrap: wrap; }
+.range-pills button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; padding: 5px 9px; border-radius: 999px; cursor: pointer; transition: color 0.15s, background 0.2s; }
+.range-pills button:hover { color: var(--text); }
+.range-pills button.on { background: var(--surface-3); color: var(--text); }
+.legend { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); }
+.legend i { display: inline-block; width: 14px; height: 0; border-top: 2px solid var(--text-2); margin-left: 6px; }
+.legend i.lg-dash { border-top: 1.5px dashed var(--muted); }
+.pchart-note { font-size: 11.5px; color: var(--muted); margin-top: 6px; padding: 0 2px; }
+.spinner.sm { width: 12px; height: 12px; border-width: 1.5px; margin-top: 4px; }
+
+.lchart { position: relative; touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: crosshair; }
+.lchart svg { display: block; overflow: visible; position: absolute; left: 0; top: 0; }
+.lchart .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.lchart .tick.ref { font-size: 10.5px; }
+.lchart .line-draw { stroke-dasharray: 1; stroke-dashoffset: 0; animation: draw 1.1s cubic-bezier(0.4, 0, 0.2, 1) both; }
+.lchart .area-fade { animation: fade 0.9s 0.25s ease-out both; }
+.lchart .marker { animation: fade 0.4s 0.9s both; }
+.ltip {
+  position: absolute; top: -4px; pointer-events: none; transform: translate(10px, -100%); background: var(--surface-3); border: 1px solid var(--border-strong);
+  border-radius: 10px; box-shadow: var(--shadow-lg); padding: 7px 10px; font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; z-index: 3;
+}
+.ltip.left { transform: translate(calc(-100% - 10px), -100%); }
+.ltip b { font-weight: 650; font-size: 13.5px; }
+.ltip-sub { color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+.chart-empty { border-radius: 12px; background: linear-gradient(90deg, transparent, var(--surface-2), transparent); background-size: 200% 100%; animation: shimmer 1.6s linear infinite; opacity: 0.6; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+.movers { display: flex; flex-direction: column; gap: 2px; min-height: 190px; justify-content: center; }
+.movers-empty { min-height: 190px; display: grid; place-items: center; text-align: center; padding: 0 20px; }
+.mover { display: grid; grid-template-columns: 64px 1fr 118px; align-items: center; gap: 12px; padding: 6px 6px; border: 0; background: none; border-radius: 10px; cursor: pointer; font: inherit; color: inherit; text-align: left; animation: fade-up 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 50ms); }
+.mover:hover { background: var(--surface-2); }
+.mv-name { font-weight: 650; font-size: 13px; }
+.mv-track { position: relative; height: 8px; }
+.mv-track::before { content: ''; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px; background: var(--axis); }
+.mv-bar { position: absolute; top: 0; height: 8px; border-radius: 4px; animation: grow-x 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(120ms + var(--i, 0) * 50ms); }
+.mv-bar.pos { background: var(--pos); transform-origin: left; }
+.mv-bar.neg { background: var(--neg); transform-origin: right; }
+.mv-val { text-align: right; font-weight: 620; font-size: 13px; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; line-height: 1.25; }
+.mv-val small { font-size: 11px; opacity: 0.8; font-weight: 550; }
+
+@media (max-width: 900px) {
+  .hero { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .perf-sep { margin: 10px 12px; }
+  .perf-val { font-size: 15.5px; gap: 6px; }
+  .perf-val small { font-size: 11.5px; }
+  .legend { display: none; }
+  .mover { grid-template-columns: 56px 1fr 100px; }
+}
+
+/* ---------- Asset chart (drawer) ---------- */
+.achart { margin: -4px 0 4px; }
+.achart-head { padding: 0 2px 6px; min-height: 52px; }
+.achart-price { font-size: 26px; font-weight: 640; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; }
+.achart-ch { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.achart-ch .muted { font-weight: 500; }
+.achart-empty { height: 170px; display: grid; place-items: center; text-align: center; padding: 0 30px; border: 1px dashed var(--border-strong); border-radius: 14px; }
+.seg-select { border: 0; background: none; color: var(--text-2); font: inherit; font-weight: 550; padding: 7px 10px 7px 14px; border-radius: 999px; cursor: pointer; appearance: none; -webkit-appearance: none; padding-right: 26px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 14px) 50%, calc(100% - 10px) 50%; background-size: 4px 4px; background-repeat: no-repeat; }
+.seg-select.on { background-color: var(--text); color: var(--bg); }
+.seg-select option { color: var(--text); background: var(--surface); }

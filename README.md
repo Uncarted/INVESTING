@@ -6,7 +6,7 @@ Everything runs in your browser. There is no server and no account, and your dat
 
 ## How to use
 
-**Easiest way:** download `Carteira.html` and double-click it. That's the whole app in a single file.
+**Easiest way:** download `Wallet.html` and double-click it. That's the whole app in a single file.
 
 > Your data is saved in the browser you open it with (localStorage). Use the same browser each time, and make a backup now and then (*Importar / Backup → Salvar backup*).
 
@@ -16,7 +16,7 @@ Everything runs in your browser. There is no server and no account, and your dat
 npm install
 npm run dev       # http://localhost:5173
 npm test          # calculation engine tests
-npm run release   # rebuilds Carteira.html
+npm run release   # rebuilds Wallet.html
 ```
 
 ## Accounts and database (Supabase)

@@ -48,7 +48,7 @@ export function AuthScreen() {
         <Icon name="globe" size={14} /> {getLang() === 'en' ? 'Português' : 'English'}
       </button>
       <div className="auth-side">
-        <div className="wordmark" style={{ fontSize: 40 }}>carteira<i>.</i></div>
+        <div className="wordmark" style={{ fontSize: 40 }}>wallet<i>.</i></div>
         <h1>
           {t('Seus investimentos,', 'Your investments,')}<br /><em>{t('num lugar só.', 'all in one place.')}</em>
         </h1>
@@ -121,7 +121,7 @@ export function Splash({ text }: { text?: string }) {
   text ??= t('Carregando sua carteira…', 'Loading your portfolio…');
   return (
     <div className="splash">
-      <div className="wordmark" style={{ fontSize: 44 }}>carteira<i>.</i></div>
+      <div className="wordmark" style={{ fontSize: 44 }}>wallet<i>.</i></div>
       <div className="row muted"><span className="spinner" /> {text}</div>
     </div>
   );

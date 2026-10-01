@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { actions, useData } from '../lib/store';
-import { allSales, computePositions, investedSeries, type Position } from '../lib/portfolio';
+import { allSales, computePositions, type Position } from '../lib/portfolio';
 import { computeTaxYear } from '../lib/tax';
 import { CLASS_LABEL, CLASS_ORDER, CURRENCY_LABEL, INCOME_TYPES, isMarketClass, type AssetClass } from '../lib/types';
-import { MONTHS, fmtCurrency, fmtDate, money, percent, qty, signedPercent, today, toISODate } from '../lib/format';
+import { fmtCurrency, fmtDate, money, percent, qty, signedPercent, today, toISODate } from '../lib/format';
 import { useLive, withLive } from '../lib/live';
-import { AreaChart } from '../components/charts';
+import { PortfolioChart } from '../components/PortfolioChart';
+import type { Range } from '../lib/history';
 import { Donut, type DonutSlice } from '../components/Donut';
 import { CountUp, Flash } from '../components/motion';
 import { Icon } from '../components/Icon';
@@ -38,16 +39,27 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
   const [hover, setHover] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<SortKey>('value');
+  const [range, setRangeState] = useState<Range>(() => {
+    try {
+      return (localStorage.getItem('wallet:range') as Range) || '1M';
+    } catch {
+      return '1M';
+    }
+  });
+  const setRange = (r: Range) => {
+    setRangeState(r);
+    try {
+      localStorage.setItem('wallet:range', r);
+    } catch {
+      /* private mode */
+    }
+  };
 
   const assets = useMemo(() => withLive(data.assets, live), [data.assets, live]);
   const settings = useMemo(() => (live.fx ? { ...data.settings, fx: { ...data.settings.fx, ...live.fx } } : data.settings), [data.settings, live.fx]);
   const positions = useMemo(
     () => computePositions(assets, data.transactions, settings, tdy).filter((p) => !p.closed && (p.cost > 0.005 || p.value > 0.005)),
     [assets, data.transactions, settings, tdy],
-  );
-  const series = useMemo(
-    () => investedSeries(data.assets, data.transactions, data.settings, tdy).map((d) => ({ month: d.month, value: d.cost })),
-    [data.assets, data.transactions, data.settings, tdy],
   );
   const year = Number(tdy.slice(0, 4));
   const sales = useMemo(() => allSales(data.assets, data.transactions, data.settings), [data.assets, data.transactions, data.settings]);
@@ -156,22 +168,31 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
             <CountUp value={total} format={(v) => splitMoney(v)[0]} duration={1400} />
             {cents && <span className="cents">{cents}</span>}
           </div>
-          <div className="badges">
-            <span className={'badge ' + (result >= 0 ? 'pos' : 'neg')}>
-              <Icon name={result >= 0 ? 'up' : 'down'} size={14} />
-              <CountUp value={Math.abs(result)} format={(v) => money(v)} duration={1400} /> · {signedPercent(cost ? result / cost : 0)}
-            </span>
-            {dayChange !== 0 && (
-              <span className={'badge ' + (dayChange >= 0 ? 'pos' : 'neg')} title={t('Variação desde o fechamento anterior', 'Change since the previous close')}>
-                {t('Hoje', 'Today')} <Flash value={dayChange}>{dayChange >= 0 ? '+' : '−'}{money(Math.abs(dayChange))}</Flash>
+          <div className="perf">
+            <button className={'perf-item' + (range === '1D' ? ' on' : '')} onClick={() => setRange('1D')} title={t('Ver no gráfico', 'Show on the chart')}>
+              <span className="perf-label">{t('Hoje', 'Today')}</span>
+              <span className={'perf-val ' + toneOf(dayChange)}>
+                <Flash value={dayChange}>{signedMoney(dayChange)}</Flash>
+                <small>{signedPercent(total - dayChange ? dayChange / (total - dayChange) : 0)}</small>
               </span>
-            )}
+            </button>
+            <span className="perf-sep" />
+            <button className={'perf-item' + (range === 'ALL' ? ' on' : '')} onClick={() => setRange('ALL')} title={t('Ver no gráfico', 'Show on the chart')}>
+              <span className="perf-label">{t('Desde o início', 'All time')}</span>
+              <span className={'perf-val ' + toneOf(result)}>
+                <CountUp value={result} format={(v) => signedMoney(v)} duration={1400} />
+                <small>{signedPercent(cost ? result / cost : 0)}</small>
+              </span>
+            </button>
+          </div>
+          <div className="fx-row">
+            <FxQuote sym="US$" now={settings.fx.USD} prev={live.fx?.USDprev} />
+            <FxQuote sym="€" now={settings.fx.EUR} prev={live.fx?.EURprev} />
             {usdValue > 0 && (
-              <button className="badge badge-btn" onClick={() => setView('moeda')} title={t('Ver por moeda', 'View by currency')}>
+              <button className="fx-hold" onClick={() => setView('moeda')} title={t('Ver por moeda', 'View by currency')}>
                 <span className="dot" style={{ background: 'var(--c-ACAO)' }} /> {fmtCurrency(usdValue, 'USD')} {t('em dólar', 'in dollars')}
               </button>
             )}
-            <span className="badge" title={t('Cotação do dólar', 'Dollar exchange rate')}>US$ 1 = <Flash value={settings.fx.USD}>{money(settings.fx.USD, { always: true })}</Flash></span>
           </div>
           {needsKey && (
             <button className="connect-hint" onClick={() => open('config')}>
@@ -180,12 +201,18 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
           )}
         </div>
         <div className="hero-chart reveal" style={{ ['--i' as string]: 2 }}>
-          <div className="row" style={{ padding: '0 6px 6px' }}>
-            <span className="eyebrow">{t('Valor aplicado', 'Amount invested')}</span>
-            <div className="spacer" />
-            <span className="muted small">{t('desde', 'since')} {fmtMonthLong(series[0]?.month)}</span>
-          </div>
-          <AreaChart data={series} height={170} compact />
+          <PortfolioChart
+            range={range}
+            onRange={setRange}
+            assets={assets}
+            txs={data.transactions}
+            settings={settings}
+            positions={positions}
+            total={total}
+            cost={cost}
+            dayChange={dayChange}
+            openAsset={openAsset}
+          />
         </div>
       </section>
 
@@ -360,6 +387,21 @@ function greeting(name: string, dayChange: number, total: number) {
   return lines[new Date().getDate() % lines.length];
 }
 
+const toneOf = (v: number) => (v > 0.004 ? 'pos' : v < -0.004 ? 'neg' : '');
+const signedMoney = (v: number) => (v >= 0 ? '+' : '−') + money(Math.abs(v));
+
+/** "US$ 5,18 +0,3%": today's rate and its change since yesterday. */
+function FxQuote({ sym, now, prev }: { sym: string; now: number; prev?: number }) {
+  const ch = prev && prev > 0 ? now / prev - 1 : 0;
+  return (
+    <span className="fx-q" title={t('Cotação de hoje em reais', "Today's rate in reais")}>
+      <span className="muted">{sym}</span> <Flash value={now}>{numFx(now)}</Flash>
+      {ch !== 0 && <small className={ch > 0 ? 'pos' : 'neg'}>{signedPercent(ch)}</small>}
+    </span>
+  );
+}
+const numFx = (v: number) => money(v, { always: true }).replace(/R\$\s?/, '');
+
 const pct = (p: Position) => (p.cost ? (p.value - p.cost) / p.cost : 0);
 
 
@@ -370,12 +412,6 @@ function splitMoney(v: number): [string, string] {
 }
 
 const getDecimal = () => (t(',', '.'));
-function fmtMonthLong(ym?: string) {
-  if (!ym) return '';
-  const [y, m] = ym.split('-');
-  const name = MONTHS[Number(m) - 1];
-  return `${t(name, name[0].toUpperCase() + name.slice(1))} ${y}`;
-}
 
 /** DARF due date: last business day of the following month (ignores holidays). */
 export function darfDue(ym: string) {

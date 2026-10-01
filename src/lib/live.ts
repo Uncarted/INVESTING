@@ -24,7 +24,7 @@ export type FeedStatus = 'off' | 'ready' | 'connecting' | 'live' | 'polling' | '
 interface LiveState {
   quotes: Map<string, Quote>;
   status: { us: FeedStatus; b3: FeedStatus; crypto: FeedStatus; fx: FeedStatus };
-  fx?: { USD: number; EUR: number; USDprev?: number };
+  fx?: { USD: number; EUR: number; USDprev?: number; EURprev?: number };
   version: number;
 }
 
@@ -153,7 +153,8 @@ function startFx() {
       const eur = Number(j?.EURBRL?.bid);
       if (usd > 0 && eur > 0) {
         const usdPrev = usd - Number(j.USDBRL.varBid || 0);
-        state.fx = { USD: usd, EUR: eur, USDprev: usdPrev };
+        const eurPrev = eur - Number(j.EURBRL.varBid || 0);
+        state.fx = { USD: usd, EUR: eur, USDprev: usdPrev, EURprev: eurPrev };
         actions.updateSettings({ fx: { USD: usd, EUR: eur, updatedAt: new Date().toISOString() } });
         setStatus('fx', 'polling');
       }

@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
-import { money, moneyCompact, percent, fmtMonth } from '../lib/format';
-import { t } from '../lib/i18n';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { MONTHS, fmtDate, money, moneyCompact, percent, fmtMonth, toISODate } from '../lib/format';
+import { locale, t } from '../lib/i18n';
 
 export interface Slice {
   key: string;
@@ -172,6 +172,185 @@ export function MonthBars({ data, height = 180 }: { data: { label: string; value
         <div className="tooltip" style={{ left: `${((pad.l + hover * bw + bw / 2) / W) * 100}%`, top: `${(y(data[hover].value) / H) * 100}%` }}>
           <div className="muted">{data[hover].label}</div>
           <div style={{ fontWeight: 650 }}>{money(data[hover].value)}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Time-series line chart (portfolio value, asset prices).
+
+export interface LinePoint {
+  t: number;
+  v: number;
+  /** Optional second, dashed series (e.g. amount invested). */
+  b?: number;
+}
+
+const fmtAxisDate = (t: number, mode: 'intraday' | 'hourly' | 'daily', span: number) => {
+  const d = new Date(t);
+  if (mode === 'intraday') return d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
+  if (span > 400 * 86400000) return `${MONTHS[d.getMonth()]}/${String(d.getFullYear()).slice(2)}`;
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+};
+export const fmtTipDate = (t: number, mode: 'intraday' | 'hourly' | 'daily') => {
+  const d = new Date(t);
+  const day = fmtDate(toISODate(d));
+  return mode === 'daily' ? day : `${day} · ${d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })}`;
+};
+
+export function LineChart({
+  points,
+  tone,
+  height = 200,
+  format,
+  mode = 'daily',
+  markers,
+  refLine,
+  tip,
+  animKey,
+  axis = true,
+  onHover,
+  hideTip,
+}: {
+  points: LinePoint[];
+  tone: 'pos' | 'neg' | 'flat';
+  height?: number;
+  format: (v: number) => string;
+  mode?: 'intraday' | 'hourly' | 'daily';
+  markers?: { t: number; kind: 'buy' | 'sell' }[];
+  refLine?: { v: number; label: string };
+  tip?: (p: LinePoint, i: number) => React.ReactNode;
+  animKey?: string;
+  axis?: boolean;
+  onHover?: (i: number | null) => void;
+  hideTip?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(600);
+  const [hover, setHover] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setW(Math.max(200, Math.round(e.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const H = height;
+  const pad = { l: 2, r: axis ? 66 : 2, t: 10, b: axis ? 24 : 4 };
+  const color = tone === 'pos' ? 'var(--pos)' : tone === 'neg' ? 'var(--neg)' : 'var(--line)';
+  const geo = useMemo(() => {
+    if (points.length < 2) return null;
+    const vals = points.flatMap((p) => (p.b !== undefined ? [p.v, p.b] : [p.v]));
+    if (refLine) vals.push(refLine.v);
+    let lo = Math.min(...vals);
+    let hi = Math.max(...vals);
+    if (hi - lo < Math.abs(hi) * 0.002) {
+      hi += Math.abs(hi) * 0.01 || 1;
+      lo -= Math.abs(lo) * 0.01 || 1;
+    }
+    const padV = (hi - lo) * 0.1;
+    lo -= padV;
+    hi += padV;
+    const t0 = points[0].t;
+    const t1 = points[points.length - 1].t;
+    // Intraday/hourly: evenly spaced (skips nights and weekends); daily: true time scale.
+    const x = (i: number) => pad.l + (mode === 'daily' ? (points[i].t - t0) / (t1 - t0 || 1) : i / (points.length - 1)) * (w - pad.l - pad.r);
+    const y = (v: number) => pad.t + (1 - (v - lo) / (hi - lo)) * (H - pad.t - pad.b);
+    const line = 'M' + points.map((p, i) => `${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join('L');
+    const base = points.some((p) => p.b !== undefined) ? 'M' + points.map((p, i) => `${x(i).toFixed(1)},${y(p.b ?? p.v).toFixed(1)}`).join('L') : '';
+    const area = `${line}L${x(points.length - 1).toFixed(1)},${H - pad.b}L${x(0).toFixed(1)},${H - pad.b}Z`;
+    const step = niceStep((hi - lo) / 3);
+    const ticks: number[] = [];
+    for (let k = Math.ceil(lo / step); k * step <= hi; k++) ticks.push(k * step || 0);
+    const n = Math.min(5, Math.max(2, Math.floor(w / 110)));
+    const labels = Array.from({ length: n }, (_, k) => Math.round((k / (n - 1)) * (points.length - 1)));
+    return { x, y, line, base, area, ticks, labels, span: t1 - t0 };
+  }, [points, w, H, mode, refLine?.v, axis]);
+
+  if (!geo) return <div className="chart-empty" style={{ height: H }} />;
+  const { x, y, line, base, area, ticks, labels, span } = geo;
+
+  const onMove = (clientX: number) => {
+    const rect = ref.current!.getBoundingClientRect();
+    const px = clientX - rect.left;
+    let best = 0;
+    let bd = Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const d = Math.abs(x(i) - px);
+      if (d < bd) (bd = d), (best = i);
+    }
+    setHover(best);
+    onHover?.(best);
+  };
+  const hp = hover !== null ? points[hover] : null;
+  const gid = `lg-${tone}`;
+  const nearest = (t: number) => {
+    let best = 0;
+    for (let i = 0; i < points.length; i++) if (Math.abs(points[i].t - t) < Math.abs(points[best].t - t)) best = i;
+    return best;
+  };
+
+  return (
+    <div
+      className="lchart"
+      ref={ref}
+      onPointerMove={(e) => onMove(e.clientX)}
+      onPointerDown={(e) => onMove(e.clientX)}
+      onPointerLeave={() => {
+        setHover(null);
+        onHover?.(null);
+      }}
+      style={{ height: H }}
+    >
+      <svg width={w} height={H} viewBox={`0 0 ${w} ${H}`} role="img">
+        <defs>
+          <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.22" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {axis &&
+          ticks.map((v) => (
+            <g key={v}>
+              <line x1={pad.l} x2={w - pad.r} y1={y(v)} y2={y(v)} stroke="var(--grid)" strokeDasharray="2 5" />
+              <text className="tick" x={w - pad.r + 8} y={y(v) + 4}>{format(v)}</text>
+            </g>
+          ))}
+        {axis &&
+          labels.map((i, k) => (
+            <text key={k} className="tick" x={x(i)} y={H - 6} textAnchor={k === 0 ? 'start' : k === labels.length - 1 ? 'end' : 'middle'}>
+              {fmtAxisDate(points[i].t, mode, span)}
+            </text>
+          ))}
+        <g key={animKey}>
+          <path d={area} fill={`url(#${gid})`} className="area-fade" />
+          {base && <path d={base} fill="none" stroke="var(--text-3, var(--muted))" strokeWidth={1.25} strokeDasharray="4 4" opacity={0.7} />}
+          {refLine && (
+            <g>
+              <line x1={pad.l} x2={w - pad.r} y1={y(refLine.v)} y2={y(refLine.v)} stroke="var(--muted)" strokeDasharray="1 4" strokeWidth={1.25} />
+              <text className="tick ref" x={pad.l + 4} y={y(refLine.v) - 5}>{refLine.label}</text>
+            </g>
+          )}
+          <path d={line} fill="none" stroke={color} strokeWidth={1.8} strokeLinejoin="round" strokeLinecap="round" pathLength={1} className="line-draw" />
+          {markers?.map((m, k) => {
+            const i = nearest(m.t);
+            return <circle key={k} cx={x(i)} cy={y(points[i].v)} r={3.5} fill={m.kind === 'buy' ? 'var(--pos)' : 'var(--neg)'} stroke="var(--surface)" strokeWidth={1.5} className="marker" />;
+          })}
+        </g>
+        {hp && hover !== null && (
+          <g pointerEvents="none">
+            <line x1={x(hover)} x2={x(hover)} y1={pad.t} y2={H - pad.b} stroke="var(--axis)" />
+            {hp.b !== undefined && <circle cx={x(hover)} cy={y(hp.b)} r={3} fill="var(--surface)" stroke="var(--muted)" strokeWidth={1.5} />}
+            <circle cx={x(hover)} cy={y(hp.v)} r={4.5} fill={color} stroke="var(--surface)" strokeWidth={2} />
+          </g>
+        )}
+      </svg>
+      {hp && hover !== null && !hideTip && (
+        <div className={'ltip' + (x(hover) > w * 0.5 ? ' left' : '')} style={{ left: x(hover) }}>
+          <div className="muted">{fmtTipDate(hp.t, mode)}</div>
+          {tip ? tip(hp, hover) : <b>{format(hp.v)}</b>}
         </div>
       )}
     </div>

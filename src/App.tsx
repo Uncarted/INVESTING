@@ -135,7 +135,7 @@ export function App() {
     <>
       <div className="shell">
         <header className="topbar">
-          <div className="wordmark">carteira<i>.</i></div>
+          <div className="wordmark">wallet<i>.</i></div>
           <div className="spacer" />
           {topbarActions}
           <div className="menu-wrap" ref={menuRef}>

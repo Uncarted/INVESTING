@@ -87,7 +87,7 @@ export function exportWorkbook(d: Data, year?: number) {
   XLSX.utils.book_append_sheet(wb, sheet(positionsRows(d)), t('Posições', 'Positions'));
   XLSX.utils.book_append_sheet(wb, sheet(transactionRows(d)), t('Lançamentos', 'Transactions'));
   if (year) addTaxSheets(wb, d, year);
-  XLSX.writeFile(wb, `carteira-${today()}.xlsx`);
+  XLSX.writeFile(wb, `wallet-${today()}.xlsx`);
 }
 
 export function exportTaxWorkbook(d: Data, year: number) {
@@ -170,7 +170,7 @@ export function exportCSV(d: Data) {
 export function exportBackup(d: Data) {
   download(
     new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }),
-    `carteira-backup-${today()}.json`,
+    `wallet-backup-${today()}.json`,
   );
 }
 

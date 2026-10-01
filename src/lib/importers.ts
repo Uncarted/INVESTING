@@ -408,5 +408,5 @@ export function downloadTemplate() {
   ]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos');
-  XLSX.writeFile(wb, 'modelo-importacao-carteira.xlsx');
+  XLSX.writeFile(wb, 'modelo-importacao-wallet.xlsx');
 }

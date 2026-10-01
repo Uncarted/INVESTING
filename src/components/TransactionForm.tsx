@@ -314,6 +314,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
     return d;
   };
 
+  const selling = mode === 'market' && side === 'SELL';
   const liveNow = resolved ? live.quotes.get(resolved.symbol.toUpperCase()) : undefined;
 
   return (
@@ -324,8 +325,8 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
         <>
           {error && <span className="neg small" style={{ marginRight: 'auto', alignSelf: 'center' }}>{error}</span>}
           <button className="btn" onClick={onClose}>{t('Cancelar', 'Cancel')}</button>
-          {!editing && <button className="btn" onClick={() => save(true)}>{t('Salvar e adicionar outro', 'Save and add another')}</button>}
-          <button className="btn primary" onClick={() => save(false)}>{t('Salvar', 'Save')}</button>
+          {!editing && !selling && <button className="btn" onClick={() => save(true)}>{t('Salvar e adicionar outro', 'Save and add another')}</button>}
+          <button className="btn primary" onClick={() => save(false)}>{selling ? t('Vender', 'Sell') : t('Salvar', 'Save')}</button>
         </>
       }
     >
