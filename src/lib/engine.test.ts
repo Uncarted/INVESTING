@@ -361,3 +361,28 @@ describe('leitura com IA', () => {
     expect(p.rows[2].fixed).toMatchObject({ indexer: 'CDI', rate: 110, maturity: '2028-01-01' });
   });
 });
+
+describe('dólar digital (DolarApp / USDc)', () => {
+  it('extrato da DolarApp vira saldo em dólar', async () => {
+    const { buildPdfPreview } = await import('./importers');
+    const lines = [
+      'Dólares digitales Estado de Cuenta', 'DÓLARAPP MÉXICO S.A. DE C.V.',
+      'Fecha de inicio | 1 September | Balance de inicio | $ 4,038.28', '2026 | Ingresos | $ 7,167.17', 'Fecha de fin',
+      'Duración | 30 September | Retiros | $ 5,503.00', 'Balance Final | $ 5,702.45', '2026',
+    ];
+    const p = buildPdfPreview(lines, { assets: [], transactions: [] });
+    expect(p.rows.map((r) => [r.ticker, r.cls, r.tx.date, r.tx.quantity])).toEqual([['Dólar DolarApp', 'CAIXA', '2026-09-30', 5702.45]]);
+  });
+  it('IA: USDC vira dólar em conta, não cripto', async () => {
+    const { buildAiPreview } = await import('./importers');
+    const p = buildAiPreview({ institution: 'DolarApp', items: [
+      { kind: 'position', ticker: 'USDC', assetType: 'crypto', quantity: 5702.45, currency: 'USD' },
+      { kind: 'trade', side: 'SELL', ticker: 'USDC', assetType: 'crypto', quantity: 1000, price: 5.13, currency: 'BRL' },
+    ] }, { assets: [], transactions: [] });
+    expect(p.rows.map((r) => [r.cls, r.tx.quantity, r.assetExtra?.currency])).toEqual([['CAIXA', 5702.45, 'USD']]);
+  });
+  it('cripto é sempre cotada em reais', async () => {
+    const { currencyOf } = await import('./portfolio');
+    expect(currencyOf({ id: 'x', ticker: 'USDC', cls: 'CRIPTO', currency: 'USD', createdAt: '' })).toBe('BRL');
+  });
+});

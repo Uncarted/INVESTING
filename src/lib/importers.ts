@@ -668,34 +668,57 @@ export function buildBrokerStatementPreview(lines: string[], existing: { assets:
 }
 
 /** Nomad banking account (dollars in the account): the balance at the end of the period. */
-export function buildUsdCashPreview(lines: string[], existing: { assets: Asset[]; transactions: Transaction[] }): ImportPreview {
-  const text = lines.join('\n');
-  const MES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-  const end = text.match(/at[ée]\s+(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})/i);
-  const date = end ? `${end[3]}-${String(MES.indexOf(end[2].toLowerCase()) + 1).padStart(2, '0')}-${end[1].padStart(2, '0')}` : new Date().toISOString().slice(0, 10);
-  const li = lines.findIndex((l) => /Saldo final/i.test(l));
-  const vals = li >= 0 ? (lines[li + 1] ?? '').match(/US\$\s*[\d.]+,\d{2}/g) ?? [] : [];
-  const skipped: Record<string, number> = {};
-  if (!vals.length) return { format: 'usd-cash', rows: [], skipped: { [t('Saldo não encontrado', 'Balance not found')]: 1 } };
-  const balance = parseNumber(vals[0].replace('US$', ''));
-  const broker = /nomad/i.test(text) ? 'Nomad' : t('Conta EUA', 'US account');
+/** A balance in dollars sitting in an account → the matching "Dólar <broker>" cash asset. */
+function usdBalancePreview(existing: { assets: Asset[]; transactions: Transaction[] }, broker: string, balance: number, date: string): ImportPreview {
   const ticker = `${t('Dólar', 'Dollars')} ${broker}`;
+  const shown = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'USD' }).format(balance);
   const asset = existing.assets.find((a) => a.cls === 'CAIXA' && a.ticker.toLowerCase() === ticker.toLowerCase());
   const have = asset ? runMarket(asset, groupTx(existing.transactions).get(asset.id) ?? [], date, { fx: { USD: 1, EUR: 1 } } as never).quantity : 0;
   const diff = Math.round((balance - have) * 100) / 100;
-  if (Math.abs(diff) < 0.005) return { format: 'usd-cash', rows: [], skipped: { [t(`Saldo já confere: US$ ${vals[0].replace('US$', '').trim()}`, `Balance already matches`)]: 1 } };
+  if (Math.abs(diff) < 0.005) return { format: 'usd-cash', rows: [], skipped: { [t(`Saldo já confere: ${shown}`, `Balance already matches: ${shown}`)]: 1 } };
   const key = `usd-cash|${broker}|${date}|${balance}`;
   return {
     format: 'usd-cash',
     rows: [{
       key, ticker, cls: 'CAIXA',
-      tx: { type: diff > 0 ? 'BUY' : 'SELL', date, quantity: Math.abs(diff), price: 1, fees: 0, institution: broker, source: 'csv', importKey: key, notes: t(`Saldo do extrato: ${vals[0]}`, `Statement balance: ${vals[0]}`) },
+      tx: { type: diff > 0 ? 'BUY' : 'SELL', date, quantity: Math.abs(diff), price: 1, fees: 0, institution: broker, source: 'csv', importKey: key, notes: t(`Saldo do extrato: ${shown}`, `Statement balance: ${shown}`) },
       duplicate: existing.transactions.some((x) => x.importKey === key),
       assetExtra: { currency: 'USD', currentPrice: 1 },
-      warning: asset ? t(`Ajusta o saldo de US$ ${have.toFixed(2)} para ${vals[0]}`, `Adjusts the balance from US$ ${have.toFixed(2)} to ${vals[0]}`) : undefined,
+      warning: asset ? t(`Ajusta o saldo de US$ ${have.toFixed(2)} para ${shown}`, `Adjusts the balance from US$ ${have.toFixed(2)} to ${shown}`) : undefined,
     }],
-    skipped,
+    skipped: {},
   };
+}
+
+const MONTHS_ANY: Record<string, number> = {
+  janeiro: 1, fevereiro: 2, marco: 3, abril: 4, maio: 5, junho: 6, julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
+  enero: 1, febrero: 2, marzo: 3, mayo: 5, junio: 6, julio: 7, septiembre: 9, setiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+};
+const monthNum = (m: string) => MONTHS_ANY[m.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()] ?? 0;
+
+/** Nomad banking account (dollars in the account): the balance at the end of the period. */
+export function buildUsdCashPreview(lines: string[], existing: { assets: Asset[]; transactions: Transaction[] }): ImportPreview {
+  const text = lines.join('\n');
+  const end = text.match(/at[ée]\s+(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})/i);
+  const date = end && monthNum(end[2]) ? `${end[3]}-${String(monthNum(end[2])).padStart(2, '0')}-${end[1].padStart(2, '0')}` : new Date().toISOString().slice(0, 10);
+  const li = lines.findIndex((l) => /Saldo final/i.test(l));
+  const vals = li >= 0 ? (lines[li + 1] ?? '').match(/US\$\s*[\d.]+,\d{2}/g) ?? [] : [];
+  if (!vals.length) return { format: 'usd-cash', rows: [], skipped: { [t('Saldo não encontrado', 'Balance not found')]: 1 } };
+  const broker = /nomad/i.test(text) ? 'Nomad' : t('Conta EUA', 'US account');
+  return usdBalancePreview(existing, broker, parseNumber(vals[0].replace('US$', '')), date);
+}
+
+/** DolarApp (Arq) "Estado de Cuenta": dollars / USDc held in the app → final balance. */
+export function buildDolarAppPreview(lines: string[], existing: { assets: Asset[]; transactions: Transaction[] }): ImportPreview {
+  const text = lines.join('\n');
+  const bal = text.match(/Balance Final\s*\|?\s*\$\s*([\d,]+(?:\.\d{1,2})?)/i);
+  if (!bal) return { format: 'usd-cash', rows: [], skipped: { [t('Saldo não encontrado', 'Balance not found')]: 1 } };
+  const balance = Number(bal[1].replace(/,/g, ''));
+  // "Fecha de fin … 30 September … 2026"
+  const m = text.match(/Fecha de fin[\s\S]{0,80}?(\d{1,2})\s+([A-Za-zÀ-ú]+)[\s\S]{0,120}?(\d{4})/i);
+  const date = m && monthNum(m[2]) ? `${m[3]}-${String(monthNum(m[2])).padStart(2, '0')}-${m[1].padStart(2, '0')}` : new Date().toISOString().slice(0, 10);
+  return usdBalancePreview(existing, 'DolarApp', balance, date);
 }
 
 // ---------------------------------------------------------------------------
@@ -780,7 +803,8 @@ const DOC_BROKERS: [RegExp, string][] = [
 export function redactForAi(lines: string[]): string {
   const PII = /(cpf|cnpj do cliente|endere[çc]o|address|e-?mail|telefone|phone|celular|cep\b|account number|n[úu]mero da conta|ag[êe]ncia|routing|cliente:|titular|rua |avenida|av\. )/i;
   return lines
-    .filter((l) => l.length <= 400 && !PII.test(l)) // long lines are legal text; PII lines go away
+    // Legal/explanatory sentences (many words, no amounts) only slow the AI down; PII lines go away.
+    .filter((l) => l.length <= 400 && !PII.test(l) && !(l.split(/\s+/).length > 14 && !/\d[.,]\d/.test(l)))
     .map((l) =>
       l
         .replace(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g, '[cpf]')
@@ -807,12 +831,22 @@ export function buildAiPreview(ai: { institution?: string | null; statementDate?
     const a = existing.assets.find((x) => x.ticker.toUpperCase() === ticker.toUpperCase());
     return a ? runMarket(a, byAsset.get(a.id) ?? [], asOf, { fx: { USD: 1, EUR: 1 } } as never).quantity : 0;
   };
-  for (const it of ai.items ?? []) {
+  for (const raw of ai.items ?? []) {
+    let it = raw;
+    // Stablecoins / "digital dollars" (USDC, USDT, USDc) are dollars in an account, not crypto to price.
+    if (/^(USDC|USDT|USD|USDC\.E)$/i.test(it.ticker ?? '') || /usdc|usdt|d[óo]lar(es)? digita/i.test(it.name ?? '')) {
+      if (it.kind === 'position' || it.kind === 'cash') it = { ...it, kind: 'cash', assetType: 'cash', currency: 'USD', amount: it.amount ?? it.quantity };
+      else {
+        skip(t('Movimentação em dólar digital (o saldo final é o que conta)', 'Digital-dollar movement (the final balance is what counts)'));
+        continue;
+      }
+    }
     const cls = CLS[it.assetType] ?? 'OUTRO';
     const date = ISO_DATE.test(it.date ?? '') ? it.date! : asOf;
     const ticker = (it.ticker ?? '').trim().toUpperCase();
     const market = cls === 'ACAO' || cls === 'FII' || cls === 'ETF' || cls === 'BDR' || cls === 'EXTERIOR' || cls === 'CRIPTO';
-    const extra: Partial<Asset> | undefined = it.currency !== 'BRL' && cls !== 'EXTERIOR' ? { currency: it.currency } : undefined;
+    // Crypto is priced in reais (Binance BRL pairs); US stocks default to dollars.
+    const extra: Partial<Asset> | undefined = it.currency !== 'BRL' && cls !== 'EXTERIOR' && cls !== 'CRIPTO' ? { currency: it.currency } : undefined;
     if (it.kind === 'trade' && market && ticker && it.side && (it.quantity ?? 0) > 0) {
       const price = (it.price ?? 0) > 0 ? it.price! : (it.amount ?? 0) / it.quantity!;
       if (!(price > 0)) { skip(t('Negociação sem preço', 'Trade without price')); continue; }
@@ -869,6 +903,7 @@ export function buildPdfPreview(lines: string[], existing: { assets: Asset[]; tr
   if (/Extrato de Cust[óo]dia|Cust[óo]dia em/i.test(text)) return buildCustodyPreview(lines, existing);
   if (/Account Statement/i.test(text) && /PORTFOLIO|TRADING ACTIVIT/i.test(text)) return buildBrokerStatementPreview(lines, existing);
   if (/conta dep[óo]sito|Saldo final do per[íi]odo/i.test(text) && /US\$/.test(text)) return buildUsdCashPreview(lines, existing);
+  if (/d[óo]lar ?app|arqfinance|D[óo]lares digitales/i.test(text) && /Balance Final/i.test(text)) return buildDolarAppPreview(lines, existing);
   return buildGenericPreview(lines, existing);
 }
 

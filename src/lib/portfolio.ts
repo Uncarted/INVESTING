@@ -71,7 +71,8 @@ interface MarketState {
  * buys add qty×price + fees to cost; sells remove avg×qty from cost and don't change the average;
  * splits change quantity only; bonus shares add qty at the cost attributed by the company.
  */
-export const currencyOf = (a: Asset): Currency => a.currency ?? (a.cls === 'EXTERIOR' ? 'USD' : 'BRL');
+// Crypto is always priced in reais (Binance BRL pairs), whatever was stored.
+export const currencyOf = (a: Asset): Currency => (a.cls === 'CRIPTO' ? 'BRL' : a.currency ?? (a.cls === 'EXTERIOR' ? 'USD' : 'BRL'));
 
 /** BRL per unit of currency: the rate stored on the trade, else the current rate. */
 export const fxFor = (t: Transaction, cur: Currency, s?: Pick<Settings, 'fx'>) =>
