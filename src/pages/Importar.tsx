@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { actions, getData, normalize } from '../lib/store';
-import { bankName, buildPdfPreview, buildPreview, readPdfLines, downloadTemplate, FORMAT_LABEL, materialize, parseOfx, readSheet, type ImportPreview } from '../lib/importers';
+import { bankName, buildGenericPreview, buildPdfPreview, buildPreview, readPdfLines, downloadTemplate, FORMAT_LABEL, materialize, parseOfx, readSheet, type ImportPreview } from '../lib/importers';
 import { exportBackup } from '../lib/exporters';
 import { TX_LABEL, isMarketClass } from '../lib/types';
 import { fmtCurrency, fmtDate, qty } from '../lib/format';
@@ -38,10 +38,16 @@ export function Importar() {
         const { rows, bank } = parseOfx(await file.text());
         p = buildPreview(rows, getData(), { bank: bank ?? guessBank(file.name) });
       } else {
-        p = buildPreview(await readSheet(file), getData(), { bank: guessBank(file.name) });
+        const rows = await readSheet(file);
+        p = buildPreview(rows, getData(), { bank: guessBank(file.name) });
+        // Unknown layout: look for trade lines anywhere in the sheet.
+        if (p.format === 'desconhecido' && rows.length) {
+          const lines = [Object.keys(rows[0]).join(' | '), ...rows.map((r) => Object.values(r).map((v) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v ?? ''))).join(' | '))];
+          p = buildGenericPreview(lines, getData());
+        }
       }
       if (p.format === 'desconhecido') {
-        setErr(t('Não reconheci o formato. Use os extratos da B3, o CSV da sua corretora dos EUA (Nomad, Avenue…) ou a planilha modelo.', "Unrecognized format. Use the B3 statements, your US broker's CSV (Nomad, Avenue…) or the template spreadsheet."));
+        setErr(t('Não encontrei negociações nem posições nesse arquivo. Funciona com: extratos da B3, notas/confirmações de compra e venda, extratos mensais e de custódia (PDF), extratos do banco (CSV/OFX) e a planilha modelo. Se for outro formato, me mande o arquivo que eu ensino o Wallet a ler.', "Couldn't find trades or holdings in this file. Works with: B3 statements, trade confirmations, monthly and custody statements (PDF), bank statements (CSV/OFX) and the template. If it's another format, send it over and I'll teach Wallet to read it."));
         return;
       }
       setPreview({ ...p, file: file.name });

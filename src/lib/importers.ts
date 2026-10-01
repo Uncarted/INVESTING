@@ -429,13 +429,46 @@ export async function readPdfLines(file: File): Promise<string[]> {
   const out: string[] = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const tc = await (await doc.getPage(i)).getTextContent();
-    const lines = new Map<number, [number, string][]>();
-    for (const it of tc.items as { str: string; transform: number[] }[]) {
-      if (!it.str?.trim()) continue;
-      const y = Math.round(it.transform[5]);
-      (lines.get(y) ?? lines.set(y, []).get(y)!).push([it.transform[4], it.str.trim()]);
+    out.push(...pdfLines(tc.items as PdfItem[]));
+  }
+  return out;
+}
+
+export interface PdfItem {
+  str: string;
+  transform: number[];
+  width: number;
+}
+
+/** Groups pdf.js text items into lines; pieces that touch are glued, gaps become " | ". */
+export function pdfLines(items: PdfItem[]): string[] {
+  const rows = new Map<number, PdfItem[]>();
+  for (const it of items) {
+    if (!it.str) continue;
+    const y = Math.round(it.transform[5]);
+    (rows.get(y) ?? rows.set(y, []).get(y)!).push(it);
+  }
+  const out: string[] = [];
+  for (const [, row] of [...rows].sort((a, b) => b[0] - a[0])) {
+    row.sort((a, b) => a.transform[4] - b.transform[4]);
+    let line = '';
+    let end = -Infinity;
+    let sep = false;
+    for (const it of row) {
+      if (!it.str.trim()) {
+        sep = true; // a blank item between two pieces of text separates cells
+        continue;
+      }
+      const x = it.transform[4];
+      const size = Math.abs(it.transform[0]) || 8;
+      // Touching pieces (e.g. "Confirma" + "çã" + "o") are one word; any real gap is a new cell.
+      if (line && (sep || x - end > size * 0.12)) line += ' | ';
+      line += it.str.trim();
+      sep = /\s$/.test(it.str);
+      end = x + (it.width || 0);
     }
-    for (const [, cells] of [...lines].sort((a, b) => b[0] - a[0])) out.push(cells.sort((a, b) => a[0] - b[0]).map((c) => c[1]).join(' | '));
+    line = line.replace(/\s*\|\s*(\|\s*)+/g, ' | ').trim();
+    if (line.replace(/[|\s]/g, '')) out.push(line);
   }
   return out;
 }
@@ -547,7 +580,7 @@ export function buildBrokerStatementPreview(lines: string[], existing: { assets:
   const keys = new Set(existing.transactions.map((x) => x.importKey).filter(Boolean));
   const out: PreviewRow[] = [];
   const skipped: Record<string, number> = {};
-  const k = keyer('apex');
+  const k = keyer('trade'); // same key as the generic reader: a confirmation + the monthly statement don't double-count
   const holdings: { symbol: string; qty: number; price: number; desc: string }[] = [];
   const divs = new Map<string, { date: string; symbol: string; amount: number }>();
   let section: 'portfolio' | 'trades' | 'pending' | 'other' | null = null;
@@ -665,13 +698,89 @@ export function buildUsdCashPreview(lines: string[], existing: { assets: Asset[]
   };
 }
 
+// ---------------------------------------------------------------------------
+// Generic: any document where a line has a date, a ticker, a quantity and a price,
+// with "compra/venda/bought/sold" nearby (trade confirmations, notes, broker reports…).
+
+const NOT_TICKERS = new Set(['USD', 'BRL', 'EUR', 'COM', 'DESC', 'TETO', 'EUA', 'INC', 'CORP', 'LTD', 'BUY', 'SELL', 'BOT', 'SLD', 'QTD', 'CDB', 'LCI', 'LCA', 'CPF', 'CNPJ', 'IR', 'IOF', 'TOTAL', 'DATA', 'DATE', 'AGENCY', 'PAGE', 'FEE', 'FEES', 'SEC', 'TAF', 'CUSIP', 'ISIN', 'NA', 'N', 'S', 'C', 'V', 'D', 'BR', 'US', 'SP', 'RJ', 'FL', 'ON', 'PN', 'UNT', 'FII', 'ETF', 'BDR']);
+const B3_TICKER = /^[A-Z]{4}\d{1,2}F?$/;
+const US_TICKER = /^[A-Z]{1,5}(\.[A-Z])?$/;
+
+export function buildGenericPreview(lines: string[], existing: { assets: Asset[]; transactions: Transaction[] }): ImportPreview {
+  const text = lines.join('\n');
+  // Decimal comma (1.234,56) or decimal point (1,234.56)? Count both patterns in the document.
+  const commaDec = (text.match(/\d,\d{2}(?![\d.,])/g) ?? []).length + (text.match(/\d,\d{4,}/g) ?? []).length;
+  const pointDec = (text.match(/\d\.\d{2}(?![\d.,])/g) ?? []).length + (text.match(/\d\.\d{4,}/g) ?? []).length;
+  const ptNumbers = commaDec > pointDec;
+  const num = (c: string): number | null => {
+    let x = c.replace(/[R$US€\s]/g, '').replace(/^\((.*)\)$/, '-$1');
+    if (!/^-?[\d.,]+$/.test(x) || !/\d/.test(x)) return null;
+    if (x.includes('.') && x.includes(',')) x = x.lastIndexOf(',') > x.lastIndexOf('.') ? x.replace(/\./g, '').replace(',', '.') : x.replace(/,/g, '');
+    else if (x.includes(',')) x = ptNumbers ? x.replace(',', '.') : x.replace(/,/g, '');
+    else if (x.includes('.') && ptNumbers && /\.\d{3}$/.test(x)) x = x.replace(/\./g, '');
+    const n = Number(x);
+    return Number.isFinite(n) ? n : null;
+  };
+  const toDate = (c: string): string => {
+    let m = c.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = c.match(/^(\d{2})[/.](\d{2})[/.](\d{4})$/);
+    if (!m) return '';
+    // dd/mm/yyyy in Brazilian documents, mm/dd/yyyy in American ones (unless impossible).
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    const dmy = ptNumbers ? b <= 12 || a > 12 : a > 12;
+    return dmy ? `${m[3]}-${m[2]}-${m[1]}` : `${m[3]}-${m[1]}-${m[2]}`;
+  };
+  const broker = DOC_BROKERS.find(([re]) => re.test(text))?.[1];
+  const keys = new Set(existing.transactions.map((x) => x.importKey).filter(Boolean));
+  const out: PreviewRow[] = [];
+  const skipped: Record<string, number> = {};
+  const k = keyer('trade');
+  let side: 'BUY' | 'SELL' | null = null;
+  for (const line of lines) {
+    const flat = line.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s*\|\s*/g, ' ');
+    const cells = cellsOf(line);
+    const date = cells.map(toDate).find(Boolean) ?? '';
+    // Section headers like "Você comprou" / "You sold" set the side for the lines below.
+    const ctx = /\b(comprou|compras?|comprad[oa]s?|bought|buys?|purchases?)\b/.test(flat) ? 'BUY' : /\b(vendeu|vendas?|vendid[oa]s?|sold|sells?)\b/.test(flat) ? 'SELL' : null;
+    if (!date) {
+      if (ctx && cells.length <= 4) side = ctx;
+      continue;
+    }
+    const tIdx = cells.findIndex((c) => (B3_TICKER.test(c) || US_TICKER.test(c)) && !NOT_TICKERS.has(c));
+    if (tIdx < 0) continue;
+    const inline = cells.map((c) => c.toUpperCase()).find((c) => /^(BUY|SELL|BOT|SLD|B|S|C|V|COMPRA|VENDA)$/.test(c));
+    const type: TxType | null = inline ? (/^(BUY|BOT|B|C|COMPRA)$/.test(inline) ? 'BUY' : 'SELL') : ctx ?? side;
+    const nums = cells.slice(tIdx + 1).map(num).filter((n): n is number => n !== null);
+    if (nums.length < 2) continue;
+    if (!type) {
+      skipped[t('Linha sem compra/venda indicada', 'Line without buy/sell')] = (skipped[t('Linha sem compra/venda indicada', 'Line without buy/sell')] ?? 0) + 1;
+      continue;
+    }
+    const ticker = cells[tIdx];
+    const quantity = Math.abs(nums[0]);
+    const price = Math.abs(nums[1]);
+    if (!(quantity > 0 && price > 0)) continue;
+    const isB3 = B3_TICKER.test(ticker);
+    const cls: AssetClass = existing.assets.find((a) => a.ticker.toUpperCase() === ticker)?.cls ?? (isB3 ? guessClass(ticker) ?? 'ACAO' : 'EXTERIOR');
+    const key = k([date, ticker, type, quantity, price]);
+    out.push({ key, ticker, cls, tx: { type, date, quantity, price, fees: 0, institution: broker, source: 'csv', importKey: key }, duplicate: keys.has(key) });
+  }
+  return { format: out.length ? 'generic' : 'desconhecido', rows: out, skipped };
+}
+const DOC_BROKERS: [RegExp, string][] = [
+  [/nomad|apex clearing/i, 'Nomad'], [/avenue/i, 'Avenue'], [/inter ?(global|invest)/i, 'Inter'], [/xp invest/i, 'XP'], [/\brico\b/i, 'Rico'], [/\bclear\b/i, 'Clear'],
+  [/btg/i, 'BTG Pactual'], [/nu ?invest|nubank/i, 'NuInvest'], [/ita[uú]/i, 'Itaú'], [/genial/i, 'Genial'], [/toro/i, 'Toro'], [/c6/i, 'C6 Bank'],
+  [/interactive brokers/i, 'Interactive Brokers'], [/schwab/i, 'Charles Schwab'], [/binance/i, 'Binance'],
+];
+
 /** Which kind of PDF is this? */
 export function buildPdfPreview(lines: string[], existing: { assets: Asset[]; transactions: Transaction[] }): ImportPreview {
   const text = lines.join('\n');
   if (/Extrato de Cust[óo]dia|Cust[óo]dia em/i.test(text)) return buildCustodyPreview(lines, existing);
   if (/Account Statement/i.test(text) && /PORTFOLIO|TRADING ACTIVIT/i.test(text)) return buildBrokerStatementPreview(lines, existing);
   if (/conta dep[óo]sito|Saldo final do per[íi]odo/i.test(text) && /US\$/.test(text)) return buildUsdCashPreview(lines, existing);
-  return { format: 'desconhecido', rows: [], skipped: {} };
+  return buildGenericPreview(lines, existing);
 }
 
 const numFmt = (n: number) => String(Math.round(n * 100) / 100).replace('.', ',');
@@ -679,6 +788,7 @@ const numFmt = (n: number) => String(Math.round(n * 100) / 100).replace('.', ','
 export const FORMAT_LABEL = (): Record<string, string> => ({
   custody: t('Extrato de custódia (PDF) — posição de hoje', 'Custody statement (PDF) — current holdings'),
   apex: t('Extrato mensal da corretora dos EUA (PDF)', 'US broker monthly statement (PDF)'),
+  generic: t('Negociações encontradas no documento', 'Trades found in the document'),
   'usd-cash': t('Saldo em dólar na conta (PDF)', 'Dollar account balance (PDF)'),
   negociacao: 'B3 — Negociação',
   movimentacao: 'B3 — Movimentação',

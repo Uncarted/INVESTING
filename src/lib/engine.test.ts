@@ -305,3 +305,26 @@ describe('extrato mensal Nomad (PDF)', () => {
     ]);
   });
 });
+
+describe('leitor genérico de negociações', () => {
+  it('confirmação de compra (Nomad/Apex em português)', async () => {
+    const { buildGenericPreview } = await import('./importers');
+    const lines = [
+      'Confirmação', 'Você | comprou',
+      'negociação | liquidação | Símbolo | QTD | Preço | bruto | COM | transação | adicionais | Valor líquido',
+      '2026-02-04 | 2026-02-05 | TTWO | 2,44498 | 204,50 | 500,00 | 0,00 | 0,00 | 0,00 | 500,00',
+      'DESC: | TAKE-TWO INTERACTIVE SOFTWARE COM | Trade#: | 14RR5RZVB1J',
+    ];
+    const p = buildGenericPreview(lines, { assets: [], transactions: [] });
+    expect(p.rows.map((r) => [r.tx.type, r.tx.date, r.ticker, r.cls, r.tx.quantity, r.tx.price])).toEqual([['BUY', '2026-02-04', 'TTWO', 'EXTERIOR', 2.44498, 204.5]]);
+  });
+  it('planilha qualquer com C/V e ticker da B3', async () => {
+    const { buildGenericPreview } = await import('./importers');
+    const lines = ['Dia | Operação | Papel | Qtde | Preço', '15/03/2026 | C | PETR4 | 100 | 38,50', '20/03/2026 | V | PETR4 | 50 | 41,20'];
+    const p = buildGenericPreview(lines, { assets: [], transactions: [] });
+    expect(p.rows.map((r) => [r.tx.type, r.tx.date, r.ticker, r.tx.quantity, r.tx.price])).toEqual([
+      ['BUY', '2026-03-15', 'PETR4', 100, 38.5],
+      ['SELL', '2026-03-20', 'PETR4', 50, 41.2],
+    ]);
+  });
+});
