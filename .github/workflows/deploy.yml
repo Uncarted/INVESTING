@@ -31,6 +31,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Funds list (CVM registry)
+        run: node scripts/funds.mjs dist/funds.json
       - name: Publish to gh-pages
         run: |
           cd dist

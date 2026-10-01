@@ -13,6 +13,8 @@ import { fmtCurrency, fmtDate, money, numStr, parseNumber, qty, today, toISODate
 import { t } from '../lib/i18n';
 import { runMarket, groupTx, currencyOf, computePositions } from '../lib/portfolio';
 import { estimateSaleTax, type SaleTaxEstimate } from '../lib/tax';
+import { FUND_CLASS, prettyFund, searchFunds, type Fund } from '../lib/funds';
+import { getLang } from '../lib/i18n';
 
 type Mode = 'market' | 'fixed' | 'income' | 'event';
 
@@ -29,16 +31,16 @@ const INSTITUTIONS = [
 type FType = 'CDB' | 'LCI' | 'LCA' | 'TESOURO_SELIC' | 'TESOURO_IPCA' | 'TESOURO_PRE' | 'CONTA' | 'POUPANCA' | 'FUNDO' | 'OUTRO';
 const FTYPES: FType[] = ['CDB', 'LCI', 'LCA', 'CONTA', 'TESOURO_SELIC', 'TESOURO_IPCA', 'TESOURO_PRE', 'POUPANCA', 'FUNDO', 'OUTRO'];
 const FTYPE: Record<FType, { kind: FixedKind; indexers: Indexer[]; rate: number; label: () => string; hint: () => string }> = {
-  CDB: { kind: 'CDB', indexers: ['CDI', 'IPCA', 'PRE'], rate: 100, label: () => 'CDB', hint: () => t('banco · tem IR', 'bank · taxed') },
-  LCI: { kind: 'LCI', indexers: ['CDI', 'IPCA', 'PRE'], rate: 92, label: () => 'LCI', hint: () => t('isenta de IR', 'tax-free') },
-  LCA: { kind: 'LCA', indexers: ['CDI', 'IPCA', 'PRE'], rate: 92, label: () => 'LCA', hint: () => t('isenta de IR', 'tax-free') },
-  CONTA: { kind: 'CONTA', indexers: ['CDI'], rate: 100, label: () => t('Caixinha / conta', 'Yield account'), hint: () => t('rende todo dia', 'daily yield') },
-  TESOURO_SELIC: { kind: 'TESOURO', indexers: ['SELIC'], rate: 0.05, label: () => 'Tesouro Selic', hint: () => t('reserva', 'reserve') },
-  TESOURO_IPCA: { kind: 'TESOURO', indexers: ['IPCA'], rate: 6.5, label: () => 'Tesouro IPCA+', hint: () => t('inflação +', 'inflation +') },
-  TESOURO_PRE: { kind: 'TESOURO', indexers: ['PRE'], rate: 13, label: () => t('Tesouro Prefixado', 'Tesouro Fixed'), hint: () => t('taxa fixa', 'fixed rate') },
-  POUPANCA: { kind: 'POUPANCA', indexers: ['SELIC'], rate: 0, label: () => t('Poupança', 'Savings'), hint: () => t('sem IR', 'tax-free') },
-  FUNDO: { kind: 'OUTRO', indexers: ['CDI'], rate: 100, label: () => t('Fundo', 'Fund'), hint: () => t('DI, multimercado…', 'DI, multi-market…') },
-  OUTRO: { kind: 'OUTRO', indexers: ['CDI', 'IPCA', 'PRE'], rate: 100, label: () => t('Outro', 'Other'), hint: () => t('CRI, CRA, debênture…', 'CRI, CRA, debenture…') },
+  CDB: { kind: 'CDB', indexers: ['CDI', 'IPCA', 'PRE'], rate: 100, label: () => 'CDB', hint: () => t('Emitido por banco', 'Issued by a bank') },
+  LCI: { kind: 'LCI', indexers: ['CDI', 'IPCA', 'PRE'], rate: 92, label: () => 'LCI', hint: () => t('Isenta de IR', 'Tax-free') },
+  LCA: { kind: 'LCA', indexers: ['CDI', 'IPCA', 'PRE'], rate: 92, label: () => 'LCA', hint: () => t('Isenta de IR', 'Tax-free') },
+  CONTA: { kind: 'CONTA', indexers: ['CDI'], rate: 100, label: () => t('Caixinha', 'Cash account'), hint: () => t('Rende todo dia', 'Daily yield') },
+  TESOURO_SELIC: { kind: 'TESOURO', indexers: ['SELIC'], rate: 0.05, label: () => 'Tesouro Selic', hint: () => t('Reserva', 'Reserve') },
+  TESOURO_IPCA: { kind: 'TESOURO', indexers: ['IPCA'], rate: 6.5, label: () => 'Tesouro IPCA+', hint: () => t('Inflação + taxa', 'Inflation + rate') },
+  TESOURO_PRE: { kind: 'TESOURO', indexers: ['PRE'], rate: 13, label: () => t('Tesouro Pré', 'Tesouro Fixed'), hint: () => t('Taxa fixa', 'Fixed rate') },
+  POUPANCA: { kind: 'POUPANCA', indexers: ['SELIC'], rate: 0, label: () => t('Poupança', 'Savings'), hint: () => t('Sem IR', 'Tax-free') },
+  FUNDO: { kind: 'OUTRO', indexers: ['CDI'], rate: 100, label: () => t('Fundo', 'Fund'), hint: () => t('Busque pelo nome', 'Search by name') },
+  OUTRO: { kind: 'OUTRO', indexers: ['CDI', 'IPCA', 'PRE'], rate: 100, label: () => t('Outro', 'Other'), hint: () => t('CRI, CRA, debênture', 'CRI, CRA, debenture') },
 };
 const DEFAULT_RATE: Record<Indexer, number> = { CDI: 100, IPCA: 6.5, PRE: 13, SELIC: 0.05 };
 const hasMaturity = (k: FType) => k !== 'CONTA' && k !== 'POUPANCA' && k !== 'FUNDO';
@@ -153,7 +155,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
   const [fType, setFType] = useState<FType>(() => ftypeOf(initAsset));
   const [daily, setDaily] = useState(initAsset?.fixed?.daily ?? false);
   const [customName, setCustomName] = useState('');
-  const [editName, setEditName] = useState(false);
+  const [fundPick, setFundPick] = useState<Fund | null>(null);
   const [showIssuer, setShowIssuer] = useState(!!initAsset?.fixed?.issuer);
   // income / event
   const [incomeType, setIncomeType] = useState<TxType>(editing && ['DIVIDEND', 'JCP', 'INCOME'].includes(editing.type) ? editing.type : 'DIVIDEND');
@@ -292,6 +294,8 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
         mode === 'fixed'
           ? {
               ticker: tk, cls: fType === 'FUNDO' ? 'FUNDO' : 'RENDA_FIXA', institution: institution || undefined,
+              name: fType === 'FUNDO' && fundPick ? fundPick.name : undefined,
+              cnpj: fType === 'FUNDO' && fundPick ? fundPick.cnpj : undefined,
               fixed: {
                 kind: FTYPE[fType].kind, indexer, rate: parseNumber(rate) || 0,
                 maturity: daily || !hasMaturity(fType) ? undefined : maturity || undefined,
@@ -401,6 +405,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
     setRate(String(d.rate).replace('.', t(',', '.')));
     setDaily(k === 'CONTA' || k === 'POUPANCA');
     setCustomName('');
+    setFundPick(null);
     if (!k.startsWith('TESOURO') && k !== 'CDB' && k !== 'LCI' && k !== 'LCA') setShowIssuer(false);
   }
   const liveNow = resolved ? live.quotes.get(resolved.symbol.toUpperCase()) : undefined;
@@ -613,7 +618,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
               <>
                 {fixedHoldings.length > 0 && !editing && (
                   <div className="field">
-                    <span>{t('Aplicar em', 'Deposit into')}</span>
+                    <span>{t('Colocar dinheiro em', 'Put money into')}</span>
                     <div className="chips">
                       <button type="button" className={'chip-btn' + (!existing ? ' on' : '')} onClick={() => setTicker('')}>+ {t('Novo investimento', 'New investment')}</button>
                       {fixedHoldings.map((a) => (
@@ -639,10 +644,18 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
 
                     <div className="form-grid">
                       <InstitutionField value={institution} onChange={setInstitution} options={institutions} label={fType.startsWith('TESOURO') ? t('Corretora', 'Broker') : t('Banco / corretora', 'Bank / broker')} />
-                      {(fType === 'FUNDO' || fType === 'OUTRO') && (
+                      {fType === 'FUNDO' && (
+                        <FundSearch
+                          value={customName}
+                          picked={fundPick}
+                          onType={(v) => { setCustomName(v); setFundPick(null); }}
+                          onPick={(f) => { setFundPick(f); setCustomName(prettyFund(f.name)); }}
+                        />
+                      )}
+                      {fType === 'OUTRO' && (
                         <label className="field">
-                          <span>{fType === 'FUNDO' ? t('Nome do fundo', 'Fund name') : t('Nome', 'Name')}</span>
-                          <input className="input" value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder={fType === 'FUNDO' ? 'Ex.: Trend DI' : ''} />
+                          <span>{t('Código ou nome', 'Code or name')}</span>
+                          <input className="input" value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder={t('Como aparece na corretora', 'As shown by your broker')} />
                         </label>
                       )}
 
@@ -657,7 +670,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
                             )}
                             {FTYPE[fType].indexers.length === 1 && <span className="rate-fixed">{indexer === 'CDI' ? '' : INDEXER_LABEL[indexer]}</span>}
                             <input className="input num" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} />
-                            <span className="muted rate-unit">{indexer === 'CDI' ? t('% do CDI', '% of CDI') : t('% a.a.', '% p.a.')}</span>
+                            <span className="muted rate-unit">{indexer === 'CDI' ? (FTYPE[fType].indexers.length > 1 ? '%' : t('% do CDI', '% of CDI')) : t('% a.a.', '% p.a.')}</span>
                           </div>
                         </label>
                       )}
@@ -670,7 +683,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
                           <span className="row">
                             {t('Vencimento', 'Maturity')}
                             {!fType.startsWith('TESOURO') && (
-                              <label className="mini-check"><input type="checkbox" checked={daily} onChange={(e) => setDaily(e.target.checked)} /> {t('liquidez diária', 'withdraw any time')}</label>
+                              <label className="mini-check"><input type="checkbox" checked={daily} onChange={(e) => setDaily(e.target.checked)} /> {t('Liquidez diária', 'Withdraw any time')}</label>
                             )}
                           </span>
                           {daily && !fType.startsWith('TESOURO') ? (
@@ -694,18 +707,6 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
                       )}
                     </div>
 
-                    <div className="name-preview">
-                      {editName && fType !== 'FUNDO' && fType !== 'OUTRO' ? (
-                        <input className="input" autoFocus value={customName || autoName} onChange={(e) => setCustomName(e.target.value)} onBlur={() => setEditName(false)} />
-                      ) : (
-                        <>
-                          <span className="muted">{t('Vai aparecer como', 'Will show as')}</span> <b>{fixedName || '—'}</b>
-                          {fType !== 'FUNDO' && fType !== 'OUTRO' && (
-                            <button type="button" className="icon-btn sm" title={t('Mudar o nome', 'Rename')} onClick={() => setEditName(true)}><Icon name="edit" size={13} /></button>
-                          )}
-                        </>
-                      )}
-                    </div>
                   </>
                 )}
               </>
@@ -921,6 +922,61 @@ function InstitutionField({ value, onChange, options, label }: { value: string; 
   );
 }
 
+/** Search the CVM fund registry by name or CNPJ. */
+function FundSearch({ value, picked, onType, onPick }: { value: string; picked: Fund | null; onType: (v: string) => void; onPick: (f: Fund) => void }) {
+  const [res, setRes] = useState<Fund[]>([]);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [active, setActive] = useState(0);
+  useEffect(() => {
+    if (picked || value.trim().length < 2) return setRes([]);
+    let alive = true;
+    setBusy(true);
+    const id = setTimeout(() => searchFunds(value).then((r) => alive && (setRes(r), setBusy(false), setActive(0))), 180);
+    return () => {
+      alive = false;
+      clearTimeout(id);
+    };
+  }, [value, picked]);
+  const pick = (f: Fund) => {
+    onPick(f);
+    setOpen(false);
+  };
+  return (
+    <label className="field combo full">
+      <span>{t('Fundo', 'Fund')}</span>
+      <input
+        className="input"
+        value={value}
+        placeholder={t('Busque pelo nome ou CNPJ (ex.: Trend DI)', 'Search by name or CNPJ (e.g. Trend DI)')}
+        onChange={(e) => { onType(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => {
+          if (!open || !res.length) return;
+          if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, res.length - 1)); }
+          if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
+          if (e.key === 'Enter') { e.preventDefault(); pick(res[active]); }
+        }}
+      />
+      {picked && <span className="hint">CNPJ {picked.cnpj} · {FUND_CLASS(picked.cls, getLang() !== 'en')}</span>}
+      {open && !picked && value.trim().length >= 2 && (res.length > 0 || !busy) && (
+        <div className="combo-list">
+          {res.map((f, i) => (
+            <div key={f.cnpj} className={'combo-item' + (i === active ? ' on' : '')} onMouseDown={() => pick(f)}>
+              <span className="ci-text">
+                <b>{prettyFund(f.name)}</b>
+                <span>{FUND_CLASS(f.cls, getLang() !== 'en')} · CNPJ {f.cnpj}</span>
+              </span>
+            </div>
+          ))}
+          {!res.length && <div className="combo-item muted small" style={{ cursor: 'default' }}>{t('Nenhum fundo encontrado — pode deixar o nome assim mesmo.', 'No fund found — you can keep the name as typed.')}</div>}
+        </div>
+      )}
+    </label>
+  );
+}
+
 /** Pick one of your holdings from a list (no typing, no pop-ups). */
 function HoldingPicker({
   label, holdings, value, onChange, sub, empty,
@@ -932,7 +988,7 @@ function HoldingPicker({
     <div className="field">
       <span className="row">
         {label}
-        {holdings.length > 6 && <input className="picker-filter" placeholder={t('filtrar', 'filter')} value={q} onChange={(e) => setQ(e.target.value)} />}
+        {holdings.length > 6 && <input className="picker-filter" placeholder={t('Filtrar', 'Filter')} value={q} onChange={(e) => setQ(e.target.value)} />}
       </span>
       {!holdings.length ? (
         <div className="picker-empty muted small">{empty}</div>

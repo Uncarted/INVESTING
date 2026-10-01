@@ -225,16 +225,16 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
               : tax.exterior.tax > 0.005
                 ? yearTax - tax.exterior.tax > 0.005
                   ? t(`${money(tax.exterior.tax, { always: true })} na declaração de ${year + 1} · resto via DARF →`, `${money(tax.exterior.tax, { always: true })} with your ${year + 1} return · rest via DARF →`)
-                  : t(`a pagar na declaração de ${year + 1} →`, `due with your ${year + 1} return →`)
+                  : t(`A pagar na declaração de ${year + 1} →`, `Due with your ${year + 1} return →`)
                 : yearTax > 0.005
-                  ? t('pago mês a mês via DARF →', 'paid monthly via DARF →')
-                  : t('nenhum imposto sobre o que vendeu até agora', 'no tax on what you sold so far')}
+                  ? t('Pago mês a mês via DARF →', 'Paid monthly via DARF →')
+                  : t('Nenhum imposto sobre o que vendeu até agora', 'No tax on what you sold so far')}
           </span>
         </button>
         <button className="tile reveal" style={{ ['--i' as string]: 5 }} onClick={() => open('lancamentos')}>
           <span className="t-label"><Icon name="chart" size={14} /> {t('Lucro com vendas em', 'Profit from sales in')} {year}</span>
           <span className={'t-value ' + (realizedYear > 0 ? 'pos' : realizedYear < 0 ? 'neg' : '')}><CountUp value={realizedYear} format={(v) => money(v)} /></span>
-          <span className="t-sub">{tax.totals.acoesExemptGain > 0 ? `${money(tax.totals.acoesExemptGain)} ${t('isento de IR', 'tax-exempt')}` : t('resultado realizado no ano', 'realized this year')}</span>
+          <span className="t-sub">{tax.totals.acoesExemptGain > 0 ? `${money(tax.totals.acoesExemptGain)} ${t('isento de IR', 'tax-exempt')}` : t('Resultado realizado no ano', 'Realized this year')}</span>
         </button>
       </div>
 

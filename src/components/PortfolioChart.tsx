@@ -96,7 +96,7 @@ export function PortfolioChart({
             <>
               <b>{money(p.v)}</b>
               <div className="ltip-sub">
-                {t('aplicado', 'invested')} {money(p.b ?? 0)} · <span className={tone(p.v - (p.b ?? 0))}>{signed(p.v - (p.b ?? 0))}</span>
+                {t('Aplicado', 'Invested')} {money(p.b ?? 0)} · <span className={tone(p.v - (p.b ?? 0))}>{signed(p.v - (p.b ?? 0))}</span>
               </div>
             </>
           )}
@@ -111,7 +111,7 @@ export function PortfolioChart({
         </div>
         {range !== '1D' && (
           <span className="legend">
-            <i className="lg-line" /> {t('patrimônio', 'net worth')} <i className="lg-dash" /> {t('aplicado', 'invested')}
+            <i className="lg-line" /> {t('Patrimônio', 'Net worth')} <i className="lg-dash" /> {t('Aplicado', 'Invested')}
           </span>
         )}
       </div>
