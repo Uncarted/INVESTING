@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { actions, getData, normalize } from '../lib/store';
-import { buildPreview, downloadTemplate, FORMAT_LABEL, materialize, readSheet, type ImportPreview } from '../lib/importers';
+import { bankName, buildPreview, downloadTemplate, FORMAT_LABEL, materialize, parseOfx, readSheet, type ImportPreview } from '../lib/importers';
 import { exportBackup } from '../lib/exporters';
 import { TX_LABEL } from '../lib/types';
 import { fmtCurrency, fmtDate, qty } from '../lib/format';
@@ -9,6 +9,12 @@ import { Icon } from '../components/Icon';
 import { t } from '../lib/i18n';
 import { cloudEnabled } from '../lib/cloud';
 import { fxOnDate } from '../lib/live';
+
+/** "NU_2025.csv" → Nubank, "Extrato Inter.ofx" → Inter. */
+const guessBank = (file: string) => {
+  const b = bankName(file.replace(/\.[a-z]+$/i, '').replace(/[_-]/g, ' '));
+  return b === file.replace(/\.[a-z]+$/i, '').replace(/[_-]/g, ' ') ? undefined : b;
+};
 
 export function Importar() {
   const [preview, setPreview] = useState<(ImportPreview & { file: string }) | null>(null);
@@ -24,8 +30,13 @@ export function Importar() {
     const file = files?.[0];
     if (!file) return;
     try {
-      const rows = await readSheet(file);
-      const p = buildPreview(rows, getData());
+      let p: ImportPreview;
+      if (/\.ofx$/i.test(file.name)) {
+        const { rows, bank } = parseOfx(await file.text());
+        p = buildPreview(rows, getData(), { bank: bank ?? guessBank(file.name) });
+      } else {
+        p = buildPreview(await readSheet(file), getData(), { bank: guessBank(file.name) });
+      }
       if (p.format === 'desconhecido') {
         setErr(t('Não reconheci o formato. Use os extratos da B3, o CSV da sua corretora dos EUA (Nomad, Avenue…) ou a planilha modelo.', "Unrecognized format. Use the B3 statements, your US broker's CSV (Nomad, Avenue…) or the template spreadsheet."));
         return;
@@ -128,8 +139,8 @@ export function Importar() {
       >
         <Icon name="upload" size={28} />
         <h3 style={{ margin: '8px 0 4px' }}>{t('Arraste um arquivo aqui ou clique para escolher', 'Drop a file here or click to choose')}</h3>
-        <div className="muted">{t('Excel (.xlsx) ou CSV — B3, Nomad/Avenue ou planilha modelo. Você revisa tudo antes de importar.', 'Excel (.xlsx) or CSV — B3, Nomad/Avenue or the template. You review everything before importing.')}</div>
-        <input ref={input} type="file" accept=".xlsx,.xls,.csv" hidden onChange={(e) => { handle(e.target.files); e.target.value = ''; }} />
+        <div className="muted">{t('Excel, CSV ou OFX — B3, extrato do banco, Nomad/Avenue ou planilha modelo. Você revisa tudo antes de importar.', 'Excel, CSV or OFX — B3, bank statement, Nomad/Avenue or the template. You review everything before importing.')}</div>
+        <input ref={input} type="file" accept=".xlsx,.xls,.csv,.ofx" hidden onChange={(e) => { handle(e.target.files); e.target.value = ''; }} />
       </div>
       {err && <div className="notice"><Icon name="alert" /><span>{err}</span></div>}
 
@@ -145,6 +156,10 @@ export function Importar() {
           <p className="muted small">{t('A B3 não informa corretagem nem taxas; se quiser que entrem no preço médio, edite o lançamento depois. CDBs, LCIs e fundos de banco não passam pela B3: adicione pelo formulário.', "B3 doesn't include brokerage fees; edit the transaction later if you want them in the average price. Bank CDBs, LCIs and funds don't go through B3: add them with the form.")}</p>
         </div>
         <div className="stack">
+          <div className="card card-pad">
+            <h2 style={{ fontSize: 15, marginTop: 0 }}>{t('Caixinhas e aplicações do banco', 'Bank savings boxes and deposits')}</h2>
+            <p className="text-2" style={{ marginTop: 0 }}>{t('Caixinhas, RDBs e CDBs do banco não aparecem na B3. No app do banco, exporte o extrato da conta (CSV ou OFX) e arraste aqui: pegamos só o dinheiro guardado e resgatado e montamos o investimento (100% do CDI, liquidez diária — dá pra ajustar depois).', "Bank savings boxes, RDBs and CDBs don't show up at B3. In your bank's app, export the account statement (CSV or OFX) and drop it here: we keep only money put in and taken out and build the investment (100% of CDI, daily liquidity — adjustable later).")}</p>
+          </div>
           <div className="card card-pad">
             <h2 style={{ fontSize: 15, marginTop: 0 }}>{t('Corretora dos EUA (Nomad, Avenue…)', 'US broker (Nomad, Avenue…)')}</h2>
             <p className="text-2" style={{ marginTop: 0 }}>{t('A B3 não vê o que você comprou lá fora. No app da corretora, exporte o histórico de transações/extrato em CSV ou Excel e arraste aqui. Compras, vendas e dividendos entram em dólar, com a cotação do dólar de cada dia buscada automaticamente.', "B3 can't see what you bought abroad. In your broker's app, export the transaction history/statement as CSV or Excel and drop it here. Buys, sells and dividends come in as dollars, with each day's dollar rate fetched automatically.")}</p>

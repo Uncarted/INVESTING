@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { Asset, AssetClass, Transaction, TxType } from './types';
+import type { Asset, AssetClass, FixedIncomeInfo, Transaction, TxType } from './types';
 import { CLASS_LABEL, isMarketClass } from './types';
 import { guessClass, normalizeTicker } from './classify';
 import { parseDate, parseNumber } from './format';
@@ -16,6 +16,8 @@ export interface PreviewRow {
   tx: Omit<Transaction, 'id' | 'createdAt' | 'assetId'>;
   duplicate: boolean;
   warning?: string;
+  /** Fixed-income details for a new asset (bank statement imports). */
+  fixed?: FixedIncomeInfo;
 }
 
 export interface ImportPreview {
@@ -23,6 +25,28 @@ export interface ImportPreview {
   rows: PreviewRow[];
   skipped: Record<string, number>;
 }
+
+/** Bank statements in OFX (Nubank, Inter, Itaú… all export it): one row per transaction. */
+export function parseOfx(text: string): { rows: Row[]; bank?: string } {
+  const tag = (block: string, name: string) => block.match(new RegExp(`<${name}>([^<\\r\\n]*)`, 'i'))?.[1]?.trim();
+  const rows: Row[] = [];
+  for (const m of text.matchAll(/<STMTTRN>([\s\S]*?)(?:<\/STMTTRN>|(?=<STMTTRN>)|<\/BANKTRANLIST>)/gi)) {
+    const b = m[1];
+    const d = tag(b, 'DTPOSTED') ?? '';
+    const amt = Number((tag(b, 'TRNAMT') ?? '').replace(',', '.'));
+    if (!/^\d{8}/.test(d) || !Number.isFinite(amt)) continue;
+    rows.push({ Data: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`, Valor: amt, Descricao: [tag(b, 'NAME'), tag(b, 'MEMO')].filter(Boolean).join(' — ') });
+  }
+  const org = tag(text, 'ORG');
+  return { rows, bank: org ? bankName(org) : undefined };
+}
+
+const BANKS: [RegExp, string][] = [
+  [/nu ?pagamentos|nubank|\bnu\b/i, 'Nubank'], [/inter/i, 'Inter'], [/ita[uú]/i, 'Itaú'], [/bradesco/i, 'Bradesco'],
+  [/santander/i, 'Santander'], [/caixa/i, 'Caixa'], [/banco do brasil|\bbb\b/i, 'Banco do Brasil'], [/c6/i, 'C6 Bank'],
+  [/picpay/i, 'PicPay'], [/mercado ?pago/i, 'Mercado Pago'], [/pagbank|pagseguro/i, 'PagBank'], [/btg/i, 'BTG Pactual'], [/neon/i, 'Neon'],
+];
+export const bankName = (s: string) => BANKS.find(([re]) => re.test(s))?.[1] ?? s;
 
 export async function readSheet(file: File): Promise<Row[]> {
   const buf = await file.arrayBuffer();
@@ -58,7 +82,7 @@ const US_COLS = {
 };
 const hasAny = (keys: Set<string>, names: string[]) => names.some((n) => keys.has(n));
 
-function detect(rows: Row[]): 'negociacao' | 'movimentacao' | 'template' | 'us-broker' | null {
+function detect(rows: Row[]): 'negociacao' | 'movimentacao' | 'template' | 'us-broker' | 'bank' | null {
   if (!rows.length) return null;
   const keys = new Set(Object.keys(rows[0]).map(norm));
   if (keys.has('codigodenegociacao') && keys.has('tipodemovimentacao')) return 'negociacao';
@@ -66,6 +90,8 @@ function detect(rows: Row[]): 'negociacao' | 'movimentacao' | 'template' | 'us-b
   if (keys.has('data') && keys.has('tipo') && keys.has('ativo') && keys.has('classe')) return 'template';
   if (hasAny(keys, US_COLS.date) && hasAny(keys, US_COLS.symbol) && hasAny(keys, US_COLS.action) && (hasAny(keys, US_COLS.qty) || hasAny(keys, US_COLS.amount)))
     return 'us-broker';
+  if ((keys.has('data') || keys.has('date')) && (keys.has('valor') || keys.has('amount') || keys.has('quantia')) && hasAny(keys, ['descricao', 'historico', 'lancamento', 'description', 'identificador', 'detalhes']))
+    return 'bank';
   if (keys.has('data') && keys.has('tipo') && keys.has('ativo')) return 'template';
   return null;
 }
@@ -116,7 +142,7 @@ function keyer(prefix: string) {
   };
 }
 
-export function buildPreview(rows: Row[], existing: { assets: Asset[]; transactions: Transaction[] }): ImportPreview {
+export function buildPreview(rows: Row[], existing: { assets: Asset[]; transactions: Transaction[] }, opts: { bank?: string } = {}): ImportPreview {
   const format = detect(rows);
   const keys = new Set(existing.transactions.map((t) => t.importKey).filter(Boolean));
   const out: PreviewRow[] = [];
@@ -280,6 +306,38 @@ export function buildPreview(rows: Row[], existing: { assets: Asset[]; transacti
       });
     }
   }
+  if (format === 'bank') {
+    // Bank statement: keep only money moved into / out of caixinhas, RDBs, CDBs, savings.
+    const first = getter(rows[0]);
+    const bank = opts.bank ?? (first('identificador') !== undefined ? 'Nubank' : t('Banco', 'Bank'));
+    const mine = existing.assets.find((a) => a.fixed?.daily && (a.institution ?? '').toLowerCase() === bank.toLowerCase());
+    const ticker = mine?.ticker ?? `CDB ${bank} 100% CDI ${t('liquidez diária', 'daily')}`;
+    const k = keyer('bank');
+    const INVEST = /caixinha|cofrinho|porquinho|guardad|guardar|reserva|rdb|cdb|aplica|resgat|investiment|poupan|meta/;
+    for (const r of rows) {
+      const g = getter(r);
+      const date = parseDate(g('data', 'date'));
+      const desc = String(g('descricao', 'descrição', 'historico', 'histórico', 'lancamento', 'lançamento', 'description', 'detalhes') ?? '');
+      const value = parseNumber(g('valor', 'amount', 'quantia'));
+      const d = norm(desc);
+      if (!date || !Number.isFinite(value) || !value) continue;
+      if (!INVEST.test(d)) {
+        skip(t('Movimentação da conta (não é investimento)', 'Account activity (not an investment)'));
+        continue;
+      }
+      const type: TxType = /resgat|retirad/.test(d) ? 'SELL' : /aplica|guardad|guardar/.test(d) ? 'BUY' : value < 0 ? 'BUY' : 'SELL';
+      const amount = Math.abs(value);
+      const key = k([date, type, amount, d]);
+      out.push({
+        key, ticker, cls: 'RENDA_FIXA',
+        tx: { type, date, quantity: 1, price: amount, fees: 0, institution: bank, source: 'csv', importKey: key, notes: desc || undefined },
+        duplicate: keys.has(key),
+        fixed: { kind: 'CDB', indexer: 'CDI', rate: 100, daily: true },
+      });
+    }
+    return { format, rows: out, skipped };
+  }
+
   if (format === 'us-broker') {
     const k = keyer('us');
     const first = getter(rows[0]);
@@ -357,6 +415,7 @@ export const FORMAT_LABEL = (): Record<string, string> => ({
   movimentacao: 'B3 — Movimentação',
   template: t('Planilha modelo', 'Template spreadsheet'),
   'us-broker': t('Corretora dos EUA (Nomad, Avenue…)', 'US broker (Nomad, Avenue…)'),
+  bank: t('Extrato do banco — caixinhas e aplicações', 'Bank statement — savings boxes and deposits'),
   desconhecido: t('Formato não reconhecido', 'Unrecognized format'),
 });
 
@@ -374,7 +433,9 @@ export function materialize(rows: PreviewRow[], assets: Asset[]) {
         name: r.name,
         cls: r.cls,
         institution: r.tx.institution,
-        fixed: tesouro
+        fixed: r.fixed
+          ? r.fixed
+          : tesouro
           ? {
               kind: 'TESOURO',
               indexer: /selic/i.test(r.ticker) ? 'SELIC' : /ipca/i.test(r.ticker) ? 'IPCA' : 'PRE',

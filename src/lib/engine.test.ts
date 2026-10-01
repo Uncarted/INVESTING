@@ -218,3 +218,37 @@ describe('importar corretora dos EUA', () => {
     ]);
   });
 });
+
+describe('importar extrato do banco', () => {
+  it('pega só caixinha/RDB do CSV do Nubank', async () => {
+    const { buildPreview, materialize } = await import('./importers');
+    const rows = [
+      { Data: '05/01/2026', Valor: '-1000.00', Identificador: 'a1', 'Descrição': 'Aplicação RDB' },
+      { Data: '06/01/2026', Valor: '-45.90', Identificador: 'a2', 'Descrição': 'Compra no débito - Padaria' },
+      { Data: '20/02/2026', Valor: '300.00', Identificador: 'a3', 'Descrição': 'Resgate RDB' },
+      { Data: '01/03/2026', Valor: '2500.00', Identificador: 'a4', 'Descrição': 'Transferência recebida pelo Pix' },
+    ];
+    const p = buildPreview(rows, { assets: [], transactions: [] });
+    expect(p.format).toBe('bank');
+    expect(p.rows.map((r) => [r.tx.type, r.tx.date, r.tx.price, r.ticker])).toEqual([
+      ['BUY', '2026-01-05', 1000, 'CDB Nubank 100% CDI liquidez diária'],
+      ['SELL', '2026-02-20', 300, 'CDB Nubank 100% CDI liquidez diária'],
+    ]);
+    const { created } = materialize(p.rows, []);
+    expect(created).toHaveLength(1);
+    expect(created[0].fixed).toMatchObject({ kind: 'CDB', indexer: 'CDI', rate: 100, daily: true });
+    expect(created[0].institution).toBe('Nubank');
+  });
+
+  it('lê OFX', async () => {
+    const { parseOfx, buildPreview } = await import('./importers');
+    const ofx = `OFXHEADER:100\n<OFX><SIGNONMSGSRSV1><SONRS><FI><ORG>Banco Inter</ORG></FI></SONRS></SIGNONMSGSRSV1><BANKTRANLIST>
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260110120000<TRNAMT>-500.00<MEMO>Aplicação CDB Liquidez Diária</STMTTRN>
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260111<TRNAMT>-80.00<MEMO>Pix enviado</STMTTRN>
+</BANKTRANLIST></OFX>`;
+    const { rows, bank } = parseOfx(ofx);
+    expect(bank).toBe('Inter');
+    const p = buildPreview(rows, { assets: [], transactions: [] }, { bank });
+    expect(p.rows.map((r) => [r.tx.type, r.tx.date, r.tx.price])).toEqual([['BUY', '2026-01-10', 500]]);
+  });
+});
