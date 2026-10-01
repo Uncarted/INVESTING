@@ -328,3 +328,36 @@ describe('leitor genérico de negociações', () => {
     ]);
   });
 });
+
+describe('leitura com IA', () => {
+  it('remove dados pessoais antes de enviar', async () => {
+    const { redactForAi } = await import('./importers');
+    const text = redactForAi([
+      'Cliente: | FULANO DE TAL', 'CPF: 123.456.789-09', 'Rua das Flores, 10 - CEP 01234-567', 'E-mail: a@b.com', 'obs a@b.com',
+      '2026-02-04 | TTWO | 2,5 | 200,00', 'Telefone: +55 (11) 98765-4321',
+    ]);
+    expect(text).toBe('obs [email]\n2026-02-04 | TTWO | 2,5 | 200,00');
+  });
+  it('converte itens da IA em lançamentos', async () => {
+    const { buildAiPreview } = await import('./importers');
+    const p = buildAiPreview(
+      {
+        institution: 'XP Investimentos', statementDate: '2026-05-31',
+        items: [
+          { kind: 'trade', date: '2026-05-10', side: 'BUY', ticker: 'petr4', assetType: 'stock_br', quantity: 100, price: 38.5, currency: 'BRL' },
+          { kind: 'dividend', date: '2026-05-20', ticker: 'ITSA4', assetType: 'stock_br', amount: 42.1, currency: 'BRL', dividendType: 'JCP' },
+          { kind: 'position', ticker: 'CDB Banco X', name: 'CDB Banco X', assetType: 'fixed_income', amount: 5100, rate: '110% CDI', maturity: '2028-01-01', currency: 'BRL' },
+          { kind: 'cash', assetType: 'cash', amount: 250, currency: 'BRL' },
+        ],
+      },
+      { assets: [], transactions: [] },
+    );
+    expect(p.rows.map((r) => [r.cls, r.tx.type, r.ticker, r.tx.quantity, r.tx.price])).toEqual([
+      ['ACAO', 'BUY', 'PETR4', 100, 38.5],
+      ['ACAO', 'JCP', 'ITSA4', 1, 42.1],
+      ['RENDA_FIXA', 'BUY', 'CDB Banco X XP 110% CDI', 1, 5100],
+      ['CAIXA', 'BUY', 'Reais XP', 250, 1],
+    ]);
+    expect(p.rows[2].fixed).toMatchObject({ indexer: 'CDI', rate: 110, maturity: '2028-01-01' });
+  });
+});

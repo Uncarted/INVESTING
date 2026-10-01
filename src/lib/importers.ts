@@ -774,6 +774,95 @@ const DOC_BROKERS: [RegExp, string][] = [
   [/interactive brokers/i, 'Interactive Brokers'], [/schwab/i, 'Charles Schwab'], [/binance/i, 'Binance'],
 ];
 
+// ---------------------------------------------------------------------------
+// AI reading: personal data is removed before the text leaves the browser.
+
+export function redactForAi(lines: string[]): string {
+  const PII = /(cpf|cnpj do cliente|endere[çc]o|address|e-?mail|telefone|phone|celular|cep\b|account number|n[úu]mero da conta|ag[êe]ncia|routing|cliente:|titular|rua |avenida|av\. )/i;
+  return lines
+    .filter((l) => l.length <= 400 && !PII.test(l)) // long lines are legal text; PII lines go away
+    .map((l) =>
+      l
+        .replace(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g, '[cpf]')
+        .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, '[email]')
+        .replace(/\+?\d{2}\s?\(?\d{2}\)?\s?\d{4,5}-?\d{4}/g, '[tel]')
+        .replace(/\b\d{5}-?\d{3}\b/g, (m) => (/^\d{8}$|^\d{5}-\d{3}$/.test(m) ? '[cep]' : m)),
+    )
+    .join('\n');
+}
+
+/** Turns what the AI found into the usual review rows. */
+export function buildAiPreview(ai: { institution?: string | null; statementDate?: string | null; items: AiItemLike[] }, existing: { assets: Asset[]; transactions: Transaction[] }): ImportPreview {
+  const out: PreviewRow[] = [];
+  const skipped: Record<string, number> = {};
+  const keys = new Set(existing.transactions.map((x) => x.importKey).filter(Boolean));
+  const k = keyer('trade');
+  const inst = ai.institution ? DOC_BROKERS.find(([re]) => re.test(ai.institution!))?.[1] ?? bankName(ai.institution) : undefined;
+  const today = new Date().toISOString().slice(0, 10);
+  const asOf = ISO_DATE.test(ai.statementDate ?? '') ? ai.statementDate! : today;
+  const byAsset = groupTx(existing.transactions);
+  const skip = (r: string) => (skipped[r] = (skipped[r] ?? 0) + 1);
+  const CLS: Record<string, AssetClass> = { stock_br: 'ACAO', fii: 'FII', etf: 'ETF', bdr: 'BDR', stock_us: 'EXTERIOR', crypto: 'CRIPTO', fixed_income: 'RENDA_FIXA', fund: 'FUNDO', cash: 'CAIXA', other: 'OUTRO' };
+  const held = (ticker: string) => {
+    const a = existing.assets.find((x) => x.ticker.toUpperCase() === ticker.toUpperCase());
+    return a ? runMarket(a, byAsset.get(a.id) ?? [], asOf, { fx: { USD: 1, EUR: 1 } } as never).quantity : 0;
+  };
+  for (const it of ai.items ?? []) {
+    const cls = CLS[it.assetType] ?? 'OUTRO';
+    const date = ISO_DATE.test(it.date ?? '') ? it.date! : asOf;
+    const ticker = (it.ticker ?? '').trim().toUpperCase();
+    const market = cls === 'ACAO' || cls === 'FII' || cls === 'ETF' || cls === 'BDR' || cls === 'EXTERIOR' || cls === 'CRIPTO';
+    const extra: Partial<Asset> | undefined = it.currency !== 'BRL' && cls !== 'EXTERIOR' ? { currency: it.currency } : undefined;
+    if (it.kind === 'trade' && market && ticker && it.side && (it.quantity ?? 0) > 0) {
+      const price = (it.price ?? 0) > 0 ? it.price! : (it.amount ?? 0) / it.quantity!;
+      if (!(price > 0)) { skip(t('Negociação sem preço', 'Trade without price')); continue; }
+      const key = k([date, ticker, it.side, it.quantity, price]);
+      out.push({ key, ticker, name: it.name ?? undefined, cls, assetExtra: extra, tx: { type: it.side, date, quantity: Math.abs(it.quantity!), price, fees: Math.abs(it.fees ?? 0), institution: inst, source: 'csv', importKey: key }, duplicate: keys.has(key) });
+    } else if (it.kind === 'dividend' && ticker && (it.amount ?? 0) > 0) {
+      const type: TxType = it.dividendType ?? (cls === 'FII' ? 'INCOME' : 'DIVIDEND');
+      const key = `ai-div|${date}|${ticker}|${type}|${it.amount}`;
+      out.push({ key, ticker, cls, assetExtra: extra, tx: { type, date, quantity: 1, price: it.amount!, fees: 0, institution: inst, source: 'csv', importKey: key }, duplicate: keys.has(key) });
+    } else if (it.kind === 'position' && market && ticker && (it.quantity ?? 0) > 0) {
+      const diff = Math.round((it.quantity! - held(ticker) - out.filter((r) => r.ticker === ticker && (r.tx.type === 'BUY' || r.tx.type === 'SELL')).reduce((s, r) => s + (r.tx.type === 'BUY' ? r.tx.quantity : -r.tx.quantity), 0)) * 1e6) / 1e6;
+      if (Math.abs(diff) < 1e-6) { skip(t(`${ticker}: já confere`, `${ticker}: already matches`)); continue; }
+      if (diff < 0) { skip(t(`${ticker}: o documento mostra menos do que o Wallet — falta alguma venda`, `${ticker}: the document shows fewer shares — a sale is missing`)); continue; }
+      const price = (it.price ?? 0) > 0 ? it.price! : (it.amount ?? 0) / it.quantity!;
+      if (!(price > 0)) { skip(t('Posição sem preço', 'Position without price')); continue; }
+      const key = `ai-pos|${asOf}|${ticker}|${diff}`;
+      out.push({ key, ticker, name: it.name ?? undefined, cls, assetExtra: extra, tx: { type: 'BUY', date: asOf, quantity: diff, price, fees: 0, institution: inst, source: 'csv', importKey: key, notes: t('Posição do documento — custo = preço na data', 'Document position — cost = price on that date') }, duplicate: keys.has(key), warning: t('Custo = preço na data do documento. Edite se souber o preço pago.', 'Cost = price on the document date. Edit it if you know what you paid.') });
+    } else if ((it.kind === 'position' || it.kind === 'trade') && (cls === 'RENDA_FIXA' || cls === 'FUNDO' || cls === 'OUTRO') && (it.amount ?? 0) > 0) {
+      const rate = parseRate(it.rate ?? '') ?? { indexer: 'CDI' as const, rate: 100 };
+      const name = (it.name || ticker || t('Renda fixa', 'Fixed income')).trim();
+      const label = [name, inst && !name.toLowerCase().includes(inst.toLowerCase()) ? inst : '', it.rate ?? ''].filter(Boolean).join(' ').replace(/\s+/g, ' ');
+      const maturity = ISO_DATE.test(it.maturity ?? '') ? it.maturity! : undefined;
+      const has = existing.assets.find((a) => a.ticker.toLowerCase() === label.toLowerCase());
+      if (it.kind === 'position') {
+        const key = `ai-fix|${label}|${asOf}`;
+        out.push({ key, ticker: label, cls: cls === 'OUTRO' ? 'RENDA_FIXA' : cls, tx: { type: 'BUY', date: asOf, quantity: 1, price: it.amount!, fees: 0, institution: inst, source: 'csv', importKey: key }, duplicate: false, fixed: { kind: /lci/i.test(name) ? 'LCI' : /lca/i.test(name) ? 'LCA' : /tesouro/i.test(name) ? 'TESOURO' : 'CDB', indexer: rate.indexer, rate: rate.rate, maturity, daily: /liquidez|di[áa]ria|caixinha/i.test(name) || undefined }, balance: { value: it.amount!, date: asOf }, balanceOnly: !!has, warning: has ? t('Já existe — só atualiza o saldo', 'Already there — only updates the balance') : undefined });
+      } else {
+        const type: TxType = it.side === 'SELL' ? 'SELL' : 'BUY';
+        const key = `ai-fixtx|${label}|${date}|${type}|${it.amount}`;
+        out.push({ key, ticker: label, cls: cls === 'OUTRO' ? 'RENDA_FIXA' : cls, tx: { type, date, quantity: 1, price: it.amount!, fees: 0, institution: inst, source: 'csv', importKey: key }, duplicate: keys.has(key), fixed: { kind: 'CDB', indexer: rate.indexer, rate: rate.rate, maturity } });
+      }
+    } else if (it.kind === 'cash' && (it.amount ?? 0) >= 0 && it.amount !== null && it.amount !== undefined) {
+      const cur = it.currency;
+      const tk = `${cur === 'USD' ? t('Dólar', 'Dollars') : cur === 'EUR' ? 'Euro' : t('Reais', 'Reais')} ${inst ?? ''}`.trim();
+      const diff = Math.round((it.amount - held(tk)) * 100) / 100;
+      if (Math.abs(diff) < 0.005) { skip(t(`${tk}: saldo já confere`, `${tk}: balance already matches`)); continue; }
+      const key = `ai-cash|${tk}|${asOf}|${it.amount}`;
+      out.push({ key, ticker: tk, cls: 'CAIXA', assetExtra: { currency: cur, currentPrice: 1 }, tx: { type: diff > 0 ? 'BUY' : 'SELL', date: asOf, quantity: Math.abs(diff), price: 1, fees: 0, institution: inst, source: 'csv', importKey: key }, duplicate: keys.has(key) });
+    } else {
+      skip(t('Item que a IA não soube classificar', "Item the AI couldn't classify"));
+    }
+  }
+  return { format: 'ai', rows: out, skipped };
+}
+type AiItemLike = {
+  kind: string; date?: string | null; side?: 'BUY' | 'SELL' | null; ticker?: string | null; name?: string | null; assetType: string;
+  quantity?: number | null; price?: number | null; amount?: number | null; fees?: number | null; currency: 'BRL' | 'USD' | 'EUR';
+  rate?: string | null; maturity?: string | null; dividendType?: 'DIVIDEND' | 'JCP' | 'INCOME' | null;
+};
+
 /** Which kind of PDF is this? */
 export function buildPdfPreview(lines: string[], existing: { assets: Asset[]; transactions: Transaction[] }): ImportPreview {
   const text = lines.join('\n');
@@ -789,6 +878,7 @@ export const FORMAT_LABEL = (): Record<string, string> => ({
   custody: t('Extrato de custódia (PDF) — posição de hoje', 'Custody statement (PDF) — current holdings'),
   apex: t('Extrato mensal da corretora dos EUA (PDF)', 'US broker monthly statement (PDF)'),
   generic: t('Negociações encontradas no documento', 'Trades found in the document'),
+  ai: t('Lido com IA (Gemini) — confira antes de importar', 'Read with AI (Gemini) — check before importing'),
   'usd-cash': t('Saldo em dólar na conta (PDF)', 'Dollar account balance (PDF)'),
   negociacao: 'B3 — Negociação',
   movimentacao: 'B3 — Movimentação',

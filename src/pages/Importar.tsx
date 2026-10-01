@@ -1,13 +1,13 @@
 import { useRef, useState } from 'react';
 import { actions, getData, normalize } from '../lib/store';
-import { bankName, buildGenericPreview, buildPdfPreview, buildPreview, readPdfLines, downloadTemplate, FORMAT_LABEL, materialize, parseOfx, readSheet, type ImportPreview } from '../lib/importers';
+import { bankName, buildAiPreview, redactForAi, buildGenericPreview, buildPdfPreview, buildPreview, readPdfLines, downloadTemplate, FORMAT_LABEL, materialize, parseOfx, readSheet, type ImportPreview } from '../lib/importers';
 import { exportBackup } from '../lib/exporters';
 import { TX_LABEL, isMarketClass } from '../lib/types';
 import { fmtCurrency, fmtDate, qty } from '../lib/format';
 import { ClassChip, toast } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { t } from '../lib/i18n';
-import { cloudEnabled } from '../lib/cloud';
+import { aiReadDocument, cloudEnabled } from '../lib/cloud';
 import { fxOnDate } from '../lib/live';
 
 /** "NU_2025.csv" → Nubank, "Extrato Inter.ofx" → Inter. */
@@ -24,6 +24,7 @@ export function Importar() {
   const [busy, setBusy] = useState('');
   const input = useRef<HTMLInputElement>(null);
   const backupInput = useRef<HTMLInputElement>(null);
+  const docLines = useRef<string[]>([]);
 
   async function handle(files: FileList | null) {
     setErr('');
@@ -33,20 +34,31 @@ export function Importar() {
       let p: ImportPreview;
       if (/\.pdf$/i.test(file.name)) {
         setBusy(t('Lendo o PDF…', 'Reading the PDF…'));
-        p = buildPdfPreview(await readPdfLines(file).finally(() => setBusy('')), getData());
+        docLines.current = await readPdfLines(file).finally(() => setBusy(''));
+        p = buildPdfPreview(docLines.current, getData());
       } else if (/\.ofx$/i.test(file.name)) {
-        const { rows, bank } = parseOfx(await file.text());
+        const txt = await file.text();
+        docLines.current = txt.split(/\r?\n/);
+        const { rows, bank } = parseOfx(txt);
         p = buildPreview(rows, getData(), { bank: bank ?? guessBank(file.name) });
       } else {
         const rows = await readSheet(file);
         p = buildPreview(rows, getData(), { bank: guessBank(file.name) });
+        docLines.current = rows.length ? [Object.keys(rows[0]).join(' | '), ...rows.map((r) => Object.values(r).map((v) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v ?? ''))).join(' | '))] : [];
         // Unknown layout: look for trade lines anywhere in the sheet.
-        if (p.format === 'desconhecido' && rows.length) {
-          const lines = [Object.keys(rows[0]).join(' | '), ...rows.map((r) => Object.values(r).map((v) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v ?? ''))).join(' | '))];
-          p = buildGenericPreview(lines, getData());
-        }
+        if (p.format === 'desconhecido' && rows.length) p = buildGenericPreview(docLines.current, getData());
       }
-      if (p.format === 'desconhecido') {
+      // Nothing recognized: let the AI read it (when the account has it set up).
+      let aiNote = '';
+      if (!p.rows.length && cloudEnabled && docLines.current.length) {
+        const r = await readWithAi();
+        if (r.ok) {
+          p = r.preview;
+          if (!p.rows.length && !Object.keys(p.skipped).length) aiNote = t('A IA também não encontrou investimentos nesse documento.', "The AI didn't find investments in this document either.");
+        } else aiNote = r.reason;
+      }
+      if (p.format === 'desconhecido' || (p.format === 'ai' && !p.rows.length && !Object.keys(p.skipped).length)) {
+        if (aiNote) return setErr(aiNote);
         setErr(t('Não encontrei negociações nem posições nesse arquivo. Funciona com: extratos da B3, notas/confirmações de compra e venda, extratos mensais e de custódia (PDF), extratos do banco (CSV/OFX) e a planilha modelo. Se for outro formato, me mande o arquivo que eu ensino o Wallet a ler.', "Couldn't find trades or holdings in this file. Works with: B3 statements, trade confirmations, monthly and custody statements (PDF), bank statements (CSV/OFX) and the template. If it's another format, send it over and I'll teach Wallet to read it."));
         return;
       }
@@ -55,6 +67,24 @@ export function Importar() {
     } catch (e) {
       setErr(t('Não foi possível ler o arquivo: ', "Couldn't read the file: ") + (e as Error).message);
     }
+  }
+
+  async function readWithAi(): Promise<{ ok: true; preview: ImportPreview } | { ok: false; reason: string }> {
+    setBusy(t('Lendo com IA…', 'Reading with AI…'));
+    try {
+      const r = await aiReadDocument(redactForAi(docLines.current));
+      return r.ok ? { ok: true, preview: buildAiPreview(r.result, getData()) } : r;
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function retryWithAi() {
+    if (!preview) return;
+    const r = await readWithAi();
+    if (!r.ok) return toast(r.reason);
+    setPreview({ ...r.preview, file: preview.file });
+    setSel(new Set(r.preview.rows.filter((x) => !x.duplicate).map((x) => x.key)));
   }
 
   async function confirm() {
@@ -95,6 +125,9 @@ export function Importar() {
             <div className="muted small">{preview.file} · {preview.rows.length} {t('linhas reconhecidas', 'rows recognized')}{dup ? ` · ${dup} ${t('já importadas (desmarcadas)', 'already imported (unchecked)')}` : ''}</div>
           </div>
           <div className="spacer" />
+          {cloudEnabled && preview.format !== 'ai' && docLines.current.length > 0 && (
+            <button className="btn ghost" disabled={!!busy} onClick={retryWithAi} title={t('Não ficou certo? Deixe a IA ler o documento.', "Not right? Let the AI read the document.")}>{t('Ler com IA', 'Read with AI')}</button>
+          )}
           <button className="btn" onClick={() => setPreview(null)}>{t('Cancelar', 'Cancel')}</button>
           <button className="btn primary" disabled={!sel.size || !!busy} onClick={confirm}>{busy ? <><span className="spinner" /> {busy}</> : <><Icon name="check" size={16} /> {t('Importar', 'Import')} {sel.size}</>}</button>
         </div>

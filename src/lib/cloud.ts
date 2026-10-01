@@ -223,3 +223,54 @@ if (typeof window !== 'undefined') {
     if (pending) void flush();
   });
 }
+
+// ---------------------------------------------------------------------------
+// AI document reading (Edge Function "read-document", which holds the Gemini key).
+
+export interface AiItem {
+  kind: 'trade' | 'dividend' | 'position' | 'cash';
+  date?: string | null;
+  side?: 'BUY' | 'SELL' | null;
+  ticker?: string | null;
+  name?: string | null;
+  assetType: 'stock_br' | 'fii' | 'etf' | 'bdr' | 'stock_us' | 'crypto' | 'fixed_income' | 'fund' | 'cash' | 'other';
+  quantity?: number | null;
+  price?: number | null;
+  amount?: number | null;
+  fees?: number | null;
+  currency: 'BRL' | 'USD' | 'EUR';
+  rate?: string | null;
+  maturity?: string | null;
+  dividendType?: 'DIVIDEND' | 'JCP' | 'INCOME' | null;
+}
+export interface AiResult {
+  institution?: string | null;
+  statementDate?: string | null;
+  items: AiItem[];
+  used?: number;
+  limit?: number;
+}
+
+export async function aiReadDocument(text: string): Promise<{ ok: true; result: AiResult } | { ok: false; reason: string }> {
+  if (!supabase || !state.session) return { ok: false, reason: t('Entre na sua conta para usar a leitura com IA.', 'Sign in to use AI reading.') };
+  const { data, error } = await supabase.functions.invoke('read-document', { body: { text } });
+  if (!error && data?.items) return { ok: true, result: data as AiResult };
+  let code = (data as { error?: string } | null)?.error ?? '';
+  try {
+    // functions.invoke puts the response of a non-2xx call in error.context
+    const ctx = (error as { context?: Response } | null)?.context;
+    if (!code && ctx?.json) code = (await ctx.json())?.error ?? '';
+  } catch {
+    /* not JSON */
+  }
+  const status = (error as { context?: { status?: number } } | null)?.context?.status;
+  if (status === 404 || /not found|FunctionsFetchError|Failed to send/i.test(String(error?.message ?? '')))
+    return { ok: false, reason: t('A leitura com IA ainda não foi instalada no Supabase.', "AI reading isn't set up in Supabase yet.") };
+  const reasons: Record<string, string> = {
+    'missing-key': t('Falta a chave do Gemini nos segredos do Supabase (GEMINI_API_KEY).', 'The Gemini key is missing from the Supabase secrets (GEMINI_API_KEY).'),
+    'daily-limit': t('Limite diário de leituras com IA atingido. Tente amanhã.', 'Daily AI reading limit reached. Try again tomorrow.'),
+    'gemini-quota': t('A cota grátis do Gemini acabou por hoje. Tente mais tarde.', "Gemini's free quota is used up for now. Try later."),
+    'not-signed-in': t('Entre na sua conta para usar a leitura com IA.', 'Sign in to use AI reading.'),
+  };
+  return { ok: false, reason: reasons[code] ?? t('A IA não conseguiu ler esse documento.', "The AI couldn't read this document.") };
+}
