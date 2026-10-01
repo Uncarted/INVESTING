@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { actions, useData } from './lib/store';
 import { setHideValues } from './lib/format';
 import { flushLive, startLive } from './lib/live';
+import { syncDividends } from './lib/dividends';
 import { detectLang, setLang, t } from './lib/i18n';
 import { cloudEnabled, signOut, useCloud } from './lib/cloud';
 import { AuthScreen, Splash } from './components/AuthScreen';
 import { Icon } from './components/Icon';
-import { Toasts } from './components/ui';
+import { Toasts, toast } from './components/ui';
 import { TransactionForm, type FormInit } from './components/TransactionForm';
 import { AssetDrawer } from './components/AssetDrawer';
 import { Home } from './pages/Home';
@@ -67,6 +68,17 @@ export function App() {
   useEffect(() => {
     startLive(data.assets, s);
   }, [data.assets, s]);
+  // Dividends: look for new payments once a day, a few seconds after the portfolio loads.
+  const canSync = (!cloudEnabled || (cloud.ready && !!cloud.session)) && data.assets.length > 0;
+  const uidKey = cloud.session?.user.id ?? 'local';
+  useEffect(() => {
+    if (!canSync) return;
+    const id = window.setTimeout(async () => {
+      const n = await syncDividends();
+      if (n) toast(t(`${n} provento(s) recebido(s) adicionado(s) automaticamente`, `${n} dividend payment(s) added automatically`), { undo: true });
+    }, 4000);
+    return () => clearTimeout(id);
+  }, [canSync, uidKey]);
   useEffect(() => {
     window.addEventListener('beforeunload', flushLive);
     return () => window.removeEventListener('beforeunload', flushLive);

@@ -4,23 +4,72 @@ import { Icon } from './Icon';
 import { Logo, marketOf } from './Logo';
 import { actions, getData, newAsset, useData } from '../lib/store';
 import type { Asset, AssetClass, Currency, FixedKind, Indexer, Transaction, TxType } from '../lib/types';
-import { CLASS_LABEL, CLASS_ORDER, CURRENCY_LABEL, CURRENCY_SYMBOL, FIXED_KIND_LABEL, INDEXER_LABEL, isMarketClass } from '../lib/types';
+import { CLASS_LABEL, CLASS_ORDER, CURRENCY_LABEL, CURRENCY_SYMBOL, INDEXER_LABEL, isMarketClass } from '../lib/types';
 import { fxOnDate, searchSymbols, useLive } from '../lib/live';
 import { priceOn, twelveSearch, type Market, type PriceResult } from '../lib/prices';
 import { lookupTicker, searchDirectory, type TickerInfo } from '../lib/tickers';
 import { guessClass, normalizeTicker } from '../lib/classify';
 import { fmtCurrency, fmtDate, money, numStr, parseNumber, qty, today, toISODate } from '../lib/format';
 import { t } from '../lib/i18n';
-import { runMarket, groupTx, currencyOf } from '../lib/portfolio';
+import { runMarket, groupTx, currencyOf, computePositions } from '../lib/portfolio';
 import { estimateSaleTax, type SaleTaxEstimate } from '../lib/tax';
 
 type Mode = 'market' | 'fixed' | 'income' | 'event';
 
 const INSTITUTIONS = [
-  'XP', 'Rico', 'Clear', 'BTG Pactual', 'Nubank', 'NuInvest', 'Inter', 'Itaú', 'Íon (Itaú)', 'Bradesco', 'Ágora',
-  'Santander', 'Banco do Brasil', 'Caixa', 'C6 Bank', 'Genial', 'Modal', 'Toro', 'Órama', 'Avenue', 'Nomad', 'Binance',
-  'Mercado Bitcoin', 'Tesouro Direto', 'PicPay', 'Mercado Pago', 'Warren', 'Safra', 'Interactive Brokers', 'Charles Schwab',
+  'Ágora', 'Avenue', 'Banco do Brasil', 'Banco Pan', 'Binance', 'Bradesco', 'BTG Pactual', 'C6 Bank', 'Caixa', 'Charles Schwab',
+  'Clear', 'Genial', 'Inter', 'Interactive Brokers', 'Itaú', 'Íon (Itaú)', 'Mercado Bitcoin', 'Mercado Pago', 'Modal', 'Neon',
+  'Nomad', 'Nubank', 'NuInvest', 'Órama', 'PagBank', 'PicPay', 'Rico', 'Safra', 'Santander', 'Sicoob', 'Sicredi', 'Sofisa',
+  'Toro', 'Warren', 'XP',
 ];
+
+// ---------------------------------------------------------------------------
+// Renda fixa types: each one knows its yield options, defaults and whether it matures.
+
+type FType = 'CDB' | 'LCI' | 'LCA' | 'TESOURO_SELIC' | 'TESOURO_IPCA' | 'TESOURO_PRE' | 'CONTA' | 'POUPANCA' | 'FUNDO' | 'OUTRO';
+const FTYPES: FType[] = ['CDB', 'LCI', 'LCA', 'CONTA', 'TESOURO_SELIC', 'TESOURO_IPCA', 'TESOURO_PRE', 'POUPANCA', 'FUNDO', 'OUTRO'];
+const FTYPE: Record<FType, { kind: FixedKind; indexers: Indexer[]; rate: number; label: () => string; hint: () => string }> = {
+  CDB: { kind: 'CDB', indexers: ['CDI', 'IPCA', 'PRE'], rate: 100, label: () => 'CDB', hint: () => t('banco · tem IR', 'bank · taxed') },
+  LCI: { kind: 'LCI', indexers: ['CDI', 'IPCA', 'PRE'], rate: 92, label: () => 'LCI', hint: () => t('isenta de IR', 'tax-free') },
+  LCA: { kind: 'LCA', indexers: ['CDI', 'IPCA', 'PRE'], rate: 92, label: () => 'LCA', hint: () => t('isenta de IR', 'tax-free') },
+  CONTA: { kind: 'CONTA', indexers: ['CDI'], rate: 100, label: () => t('Caixinha / conta', 'Yield account'), hint: () => t('rende todo dia', 'daily yield') },
+  TESOURO_SELIC: { kind: 'TESOURO', indexers: ['SELIC'], rate: 0.05, label: () => 'Tesouro Selic', hint: () => t('reserva', 'reserve') },
+  TESOURO_IPCA: { kind: 'TESOURO', indexers: ['IPCA'], rate: 6.5, label: () => 'Tesouro IPCA+', hint: () => t('inflação +', 'inflation +') },
+  TESOURO_PRE: { kind: 'TESOURO', indexers: ['PRE'], rate: 13, label: () => t('Tesouro Prefixado', 'Tesouro Fixed'), hint: () => t('taxa fixa', 'fixed rate') },
+  POUPANCA: { kind: 'POUPANCA', indexers: ['SELIC'], rate: 0, label: () => t('Poupança', 'Savings'), hint: () => t('sem IR', 'tax-free') },
+  FUNDO: { kind: 'OUTRO', indexers: ['CDI'], rate: 100, label: () => t('Fundo', 'Fund'), hint: () => t('DI, multimercado…', 'DI, multi-market…') },
+  OUTRO: { kind: 'OUTRO', indexers: ['CDI', 'IPCA', 'PRE'], rate: 100, label: () => t('Outro', 'Other'), hint: () => t('CRI, CRA, debênture…', 'CRI, CRA, debenture…') },
+};
+const DEFAULT_RATE: Record<Indexer, number> = { CDI: 100, IPCA: 6.5, PRE: 13, SELIC: 0.05 };
+const hasMaturity = (k: FType) => k !== 'CONTA' && k !== 'POUPANCA' && k !== 'FUNDO';
+
+function ftypeOf(a?: Asset): FType {
+  if (!a || isMarketClass(a.cls)) return 'CDB';
+  if (a.cls === 'FUNDO') return 'FUNDO';
+  const f = a.fixed;
+  if (!f) return 'OUTRO';
+  if (f.kind === 'TESOURO') return f.indexer === 'SELIC' ? 'TESOURO_SELIC' : f.indexer === 'IPCA' ? 'TESOURO_IPCA' : 'TESOURO_PRE';
+  if (f.kind === 'CDB' || f.kind === 'LCI' || f.kind === 'LCA' || f.kind === 'CONTA' || f.kind === 'POUPANCA') return f.kind;
+  return 'OUTRO';
+}
+
+/** "CDB Nubank 110% CDI 2027", "Tesouro IPCA+ 2035", "Caixinha Nubank"… */
+function buildFixedName(o: { fType: FType; bank: string; indexer: Indexer; rate: number; maturity: string; daily: boolean }) {
+  const yr = o.maturity ? o.maturity.slice(0, 4) : '';
+  const r = Number.isFinite(o.rate) ? numStr(o.rate) || '0' : '';
+  const rateStr = o.indexer === 'CDI' ? `${r}% CDI` : o.indexer === 'IPCA' ? `IPCA+${r}%` : o.indexer === 'SELIC' ? `Selic+${r}%` : `${r}% ${t('a.a.', 'p.a.')}`;
+  const bank = o.bank.trim();
+  switch (o.fType) {
+    case 'TESOURO_SELIC': return `Tesouro Selic ${yr}`.trim();
+    case 'TESOURO_IPCA': return `Tesouro IPCA+ ${yr}`.trim();
+    case 'TESOURO_PRE': return `Tesouro Prefixado ${yr}`.trim();
+    case 'POUPANCA': return `${t('Poupança', 'Savings')} ${bank}`.trim();
+    case 'CONTA': return `${t('Caixinha', 'Cash')} ${bank} ${rateStr}`.trim();
+    case 'FUNDO':
+    case 'OUTRO': return '';
+    default: return [FTYPE[o.fType].label(), bank, rateStr, yr || (o.daily ? t('liquidez diária', 'daily') : '')].filter(Boolean).join(' ');
+  }
+}
 
 export interface FormInit {
   mode?: Mode;
@@ -97,12 +146,15 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
   // fixed
   const [amount, setAmount] = useState(editing ? str(editing.quantity * editing.price) : '');
   const [closes, setCloses] = useState(!!editing?.closes);
-  const [fixedCls, setFixedCls] = useState<AssetClass>(initAsset && !isMarketClass(initAsset.cls) ? initAsset.cls : 'RENDA_FIXA');
-  const [kind, setKind] = useState<FixedKind>(initAsset?.fixed?.kind ?? 'CDB');
   const [indexer, setIndexer] = useState<Indexer>(initAsset?.fixed?.indexer ?? 'CDI');
   const [rate, setRate] = useState(str(initAsset?.fixed?.rate) || (initAsset ? '' : '100'));
   const [maturity, setMaturity] = useState(initAsset?.fixed?.maturity ?? '');
   const [issuer, setIssuer] = useState(initAsset?.fixed?.issuer ?? '');
+  const [fType, setFType] = useState<FType>(() => ftypeOf(initAsset));
+  const [daily, setDaily] = useState(initAsset?.fixed?.daily ?? false);
+  const [customName, setCustomName] = useState('');
+  const [editName, setEditName] = useState(false);
+  const [showIssuer, setShowIssuer] = useState(!!initAsset?.fixed?.issuer);
   // income / event
   const [incomeType, setIncomeType] = useState<TxType>(editing && ['DIVIDEND', 'JCP', 'INCOME'].includes(editing.type) ? editing.type : 'DIVIDEND');
   const [eventType, setEventType] = useState<'SPLIT' | 'GROUP' | 'BONUS'>(
@@ -224,11 +276,14 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
 
   function save(again: boolean) {
     setError('');
-    const tk = mode === 'fixed' ? ticker.trim() : mode === 'market' ? pick?.symbol ?? '' : normalizeTicker(ticker);
-    if (!tk) return setError(mode === 'fixed' ? t('Dê um nome ao investimento.', 'Give the investment a name.') : t('Escolha o ativo.', 'Choose the asset.'));
+    const tk = mode === 'fixed' ? (existing ? existing.ticker : fixedName) : mode === 'market' ? pick?.symbol ?? '' : normalizeTicker(ticker);
+    if (mode === 'fixed' && side === 'SELL' && !existing) return setError(t('Escolha qual investimento você resgatou.', 'Choose which investment you redeemed.'));
+    if (mode === 'fixed' && !existing && (fType === 'FUNDO' || fType === 'OUTRO') && !customName.trim()) return setError(t('Dê um nome ao investimento.', 'Give the investment a name.'));
+    if (mode === 'fixed' && !existing && fType.startsWith('TESOURO') && !maturity) return setError(t('Informe o vencimento do título.', 'Enter the bond maturity.'));
+    if (!tk) return setError(mode === 'income' || mode === 'event' ? t('Escolha o ativo.', 'Choose the asset.') : t('Escolha o ativo.', 'Choose the asset.'));
     if (!date) return setError(t('Informe a data.', 'Enter the date.'));
 
-    let asset = existing;
+    let asset = existing ?? (mode === 'fixed' ? data.assets.find((a) => a.ticker.toLowerCase() === tk.toLowerCase()) : undefined);
     let created: Asset | undefined;
     if (!asset) {
       if (mode === 'income' || mode === 'event') return setError(t('Esse ativo não está na sua carteira. Lance uma compra primeiro.', "This asset isn't in your portfolio. Add a buy first."));
@@ -236,8 +291,13 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
       created = newAsset(
         mode === 'fixed'
           ? {
-              ticker: tk, cls: fixedCls, institution: institution || undefined,
-              fixed: fixedCls === 'RENDA_FIXA' ? { kind, indexer, rate: parseNumber(rate) || 0, maturity: maturity || undefined, issuer: issuer || undefined } : undefined,
+              ticker: tk, cls: fType === 'FUNDO' ? 'FUNDO' : 'RENDA_FIXA', institution: institution || undefined,
+              fixed: {
+                kind: FTYPE[fType].kind, indexer, rate: parseNumber(rate) || 0,
+                maturity: daily || !hasMaturity(fType) ? undefined : maturity || undefined,
+                issuer: showIssuer && issuer ? issuer : undefined,
+                daily: daily || fType === 'POUPANCA' || fType === 'CONTA' ? true : undefined,
+              },
             }
           : {
               ticker: tk, name: resolved?.name, cls: resolved?.cls ?? 'ACAO',
@@ -315,6 +375,34 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
   };
 
   const selling = mode === 'market' && side === 'SELL';
+
+  // ----- Renda fixa: everything is picked; the name is built from the choices -----
+  const fixedPositions = useMemo(() => computePositions(data.assets.filter((a) => !isMarketClass(a.cls)), data.transactions, data.settings, today()), [data]);
+  const fixedHoldings = fixedPositions.filter((p) => !p.closed || p.asset.id === initAsset?.id).map((p) => p.asset);
+  const fixedSub = (a: Asset) => {
+    const p = fixedPositions.find((x) => x.asset.id === a.id);
+    return [p ? money(p.value, { always: true }) : '', a.institution].filter(Boolean).join(' · ');
+  };
+  const marketPositions = useMemo(() => computePositions(data.assets.filter((a) => isMarketClass(a.cls)), data.transactions, data.settings, today()), [data]);
+  const marketHoldings = marketPositions
+    .filter((p) => p.quantity > 0 || p.asset.id === initAsset?.id)
+    .sort((a, b) => b.value - a.value)
+    .map((p) => p.asset);
+  const marketSub = (a: Asset) => {
+    const p = marketPositions.find((x) => x.asset.id === a.id);
+    return [p ? `${qty(p.quantity)} ${a.cls === 'FII' ? t('cotas', 'units') : a.cls === 'CRIPTO' ? '' : t('ações', 'shares')}` : '', a.name].filter(Boolean).join(' · ');
+  };
+  const autoName = buildFixedName({ fType, bank: (showIssuer && issuer) || institution, indexer, rate: parseNumber(rate), maturity: daily ? '' : maturity, daily });
+  const fixedName = (fType === 'FUNDO' || fType === 'OUTRO' ? customName : customName || autoName).trim();
+  function chooseFType(k: FType) {
+    setFType(k);
+    const d = FTYPE[k];
+    setIndexer(d.indexers[0]);
+    setRate(String(d.rate).replace('.', t(',', '.')));
+    setDaily(k === 'CONTA' || k === 'POUPANCA');
+    setCustomName('');
+    if (!k.startsWith('TESOURO') && k !== 'CDB' && k !== 'LCI' && k !== 'LCA') setShowIssuer(false);
+  }
   const liveNow = resolved ? live.quotes.get(resolved.symbol.toUpperCase()) : undefined;
 
   return (
@@ -511,69 +599,130 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
               <button type="button" className={side === 'BUY' ? 'on' : ''} onClick={() => setSide('BUY')}>{t('Aplicação', 'Deposit')}</button>
               <button type="button" className={side === 'SELL' ? 'on' : ''} onClick={() => setSide('SELL')}>{t('Resgate', 'Redemption')}</button>
             </div>
-            <div className="form-grid">
-              <div className="full">
-                <HoldingCombo
-                  label={t('Investimento', 'Investment')}
-                  placeholder={t('Ex.: CDB Banco Inter 2027', 'E.g. CDB Banco Inter 2027')}
-                  value={ticker}
-                  onChange={setTicker}
-                  holdings={holdingsFor('fixed')}
-                  autoFocus={!initAsset}
-                />
-              </div>
-              {!existing && side === 'BUY' && ticker && (
-                <>
-                  <label className="field">
-                    <span>{t('Categoria', 'Category')}</span>
-                    <select className="input" value={fixedCls} onChange={(e) => setFixedCls(e.target.value as AssetClass)}>
-                      <option value="RENDA_FIXA">{t('Renda fixa', 'Fixed income')}</option>
-                      <option value="FUNDO">{t('Fundo de investimento', 'Investment fund')}</option>
-                      <option value="OUTRO">{t('Outro', 'Other')}</option>
-                    </select>
-                  </label>
-                  {fixedCls === 'RENDA_FIXA' ? (
-                    <>
-                      <label className="field">
-                        <span>{t('Tipo', 'Type')}</span>
-                        <select className="input" value={kind} onChange={(e) => setKind(e.target.value as FixedKind)}>
-                          {Object.entries(FIXED_KIND_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                        </select>
-                      </label>
-                      <label className="field">
-                        <span>{t('Rentabilidade', 'Yield')}</span>
-                        <div className="row">
-                          <select className="input" style={{ width: 140 }} value={indexer} onChange={(e) => setIndexer(e.target.value as Indexer)}>
-                            {Object.entries(INDEXER_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                          </select>
-                          <input className="input num" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} />
-                          <span className="muted">{indexer === 'CDI' ? '%' : t('% a.a.', '% p.a.')}</span>
+
+            {side === 'SELL' ? (
+              <HoldingPicker
+                label={t('Qual investimento?', 'Which investment?')}
+                holdings={fixedHoldings}
+                value={ticker}
+                onChange={setTicker}
+                sub={(a) => fixedSub(a)}
+                empty={t('Você ainda não tem renda fixa lançada.', "You don't have any fixed income yet.")}
+              />
+            ) : (
+              <>
+                {fixedHoldings.length > 0 && !editing && (
+                  <div className="field">
+                    <span>{t('Aplicar em', 'Deposit into')}</span>
+                    <div className="chips">
+                      <button type="button" className={'chip-btn' + (!existing ? ' on' : '')} onClick={() => setTicker('')}>+ {t('Novo investimento', 'New investment')}</button>
+                      {fixedHoldings.map((a) => (
+                        <button type="button" key={a.id} className={'chip-btn' + (existing?.id === a.id ? ' on' : '')} onClick={() => setTicker(a.ticker)}>{a.ticker}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!existing && (
+                  <>
+                    <div className="field">
+                      <span>{t('Tipo', 'Type')}</span>
+                      <div className="ftype-grid">
+                        {FTYPES.map((k) => (
+                          <button type="button" key={k} className={'ftype' + (fType === k ? ' on' : '')} onClick={() => chooseFType(k)}>
+                            <b>{FTYPE[k].label()}</b>
+                            <span>{FTYPE[k].hint()}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="form-grid">
+                      <InstitutionField value={institution} onChange={setInstitution} options={institutions} label={fType.startsWith('TESOURO') ? t('Corretora', 'Broker') : t('Banco / corretora', 'Bank / broker')} />
+                      {(fType === 'FUNDO' || fType === 'OUTRO') && (
+                        <label className="field">
+                          <span>{fType === 'FUNDO' ? t('Nome do fundo', 'Fund name') : t('Nome', 'Name')}</span>
+                          <input className="input" value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder={fType === 'FUNDO' ? 'Ex.: Trend DI' : ''} />
+                        </label>
+                      )}
+
+                      {fType !== 'POUPANCA' && (
+                        <label className="field">
+                          <span>{fType === 'FUNDO' ? t('Rende mais ou menos (estimativa)', 'Roughly yields (estimate)') : t('Rentabilidade', 'Yield')}</span>
+                          <div className="rate-row">
+                            {FTYPE[fType].indexers.length > 1 && (
+                              <select className="input rate-idx" value={indexer} onChange={(e) => { const ix = e.target.value as Indexer; setIndexer(ix); setRate(String(DEFAULT_RATE[ix]).replace('.', t(',', '.'))); }}>
+                                {FTYPE[fType].indexers.map((ix) => <option key={ix} value={ix}>{INDEXER_LABEL[ix]}</option>)}
+                              </select>
+                            )}
+                            {FTYPE[fType].indexers.length === 1 && <span className="rate-fixed">{indexer === 'CDI' ? '' : INDEXER_LABEL[indexer]}</span>}
+                            <input className="input num" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} />
+                            <span className="muted rate-unit">{indexer === 'CDI' ? t('% do CDI', '% of CDI') : t('% a.a.', '% p.a.')}</span>
+                          </div>
+                        </label>
+                      )}
+                      {fType === 'POUPANCA' && (
+                        <div className="field"><span>{t('Rentabilidade', 'Yield')}</span><div className="muted small" style={{ paddingTop: 10 }}>{t('Definida pelo governo: 0,5% ao mês + TR (com a Selic acima de 8,5%).', 'Set by the government: 0.5% a month + TR (with Selic above 8.5%).')}</div></div>
+                      )}
+
+                      {hasMaturity(fType) && (
+                        <label className="field">
+                          <span className="row">
+                            {t('Vencimento', 'Maturity')}
+                            {!fType.startsWith('TESOURO') && (
+                              <label className="mini-check"><input type="checkbox" checked={daily} onChange={(e) => setDaily(e.target.checked)} /> {t('liquidez diária', 'withdraw any time')}</label>
+                            )}
+                          </span>
+                          {daily && !fType.startsWith('TESOURO') ? (
+                            <div className="input input-static muted">{t('Sem vencimento — resgata quando quiser', 'No maturity — withdraw any time')}</div>
+                          ) : (
+                            <input className="input" type="date" value={maturity} onChange={(e) => setMaturity(e.target.value)} />
+                          )}
+                        </label>
+                      )}
+
+                      {(fType === 'CDB' || fType === 'LCI' || fType === 'LCA') && (
+                        <div className="field full" style={{ gap: 4 }}>
+                          {!showIssuer ? (
+                            <button type="button" className="link-btn" style={{ alignSelf: 'flex-start' }} onClick={() => setShowIssuer(true)}>
+                              {t('Comprou pela corretora um título de outro banco?', 'Bought another bank’s bond through your broker?')}
+                            </button>
+                          ) : (
+                            <InstitutionField value={issuer} onChange={setIssuer} options={institutions} label={t('Banco emissor (quem emitiu o título)', 'Issuing bank (who issued the bond)')} />
+                          )}
                         </div>
-                      </label>
-                      <label className="field">
-                        <span>{t('Vencimento', 'Maturity')}</span>
-                        <input className="input" type="date" value={maturity} onChange={(e) => setMaturity(e.target.value)} />
-                      </label>
-                      <label className="field">
-                        <span>{t('Emissor (banco)', 'Issuer (bank)')}</span>
-                        <input className="input" value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="Banco Inter" />
-                      </label>
-                    </>
-                  ) : <div />}
-                </>
-              )}
+                      )}
+                    </div>
+
+                    <div className="name-preview">
+                      {editName && fType !== 'FUNDO' && fType !== 'OUTRO' ? (
+                        <input className="input" autoFocus value={customName || autoName} onChange={(e) => setCustomName(e.target.value)} onBlur={() => setEditName(false)} />
+                      ) : (
+                        <>
+                          <span className="muted">{t('Vai aparecer como', 'Will show as')}</span> <b>{fixedName || '—'}</b>
+                          {fType !== 'FUNDO' && fType !== 'OUTRO' && (
+                            <button type="button" className="icon-btn sm" title={t('Mudar o nome', 'Rename')} onClick={() => setEditName(true)}><Icon name="edit" size={13} /></button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            <div className="form-grid">
               <label className="field">
                 <span>{t('Data', 'Date')}</span>
                 <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
               </label>
-              <InstitutionField value={institution} onChange={setInstitution} options={institutions} />
               <label className="field">
-                <span>{side === 'BUY' ? t('Valor aplicado', 'Amount invested') : t('Valor resgatado (bruto)', 'Amount redeemed (gross)')}</span>
+                <span>{side === 'BUY' ? t('Valor aplicado (R$)', 'Amount invested (R$)') : t('Valor resgatado (R$)', 'Amount redeemed (R$)')}</span>
                 <input className="input num" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={t('0,00', '0.00')} />
               </label>
-              {side === 'SELL' && (
-                <label className="field" style={{ justifyContent: 'flex-end' }}>
-                  <span className="row"><input type="checkbox" checked={closes} onChange={(e) => setCloses(e.target.checked)} /> {t('Resgate total (encerra o investimento)', 'Full redemption (closes the investment)')}</span>
+              {side === 'SELL' && existing && (
+                <label className="field full">
+                  <span className="row"><input type="checkbox" checked={closes} onChange={(e) => setCloses(e.target.checked)} /> {t('Resgatei tudo (encerra o investimento)', 'I withdrew everything (closes the investment)')}</span>
                 </label>
               )}
             </div>
@@ -583,7 +732,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
         {mode === 'income' && (
           <div className="form-grid">
             <div className="full">
-              <HoldingCombo label={t('Ativo que pagou', 'Paying asset')} placeholder={t('Ex.: ITSA4, HGLG11', 'E.g. ITSA4, HGLG11')} value={ticker} onChange={setTicker} holdings={holdingsFor('market')} autoFocus={!initAsset} />
+              <HoldingPicker label={t('Qual ativo pagou?', 'Which asset paid?')} holdings={marketHoldings.filter((a) => a.cls !== 'CRIPTO')} value={ticker} onChange={setTicker} sub={(a) => marketSub(a)} empty={t('Você ainda não tem ações ou FIIs lançados.', "You don't have any stocks or REITs yet.")} />
             </div>
             <label className="field">
               <span>{t('Tipo', 'Type')}</span>
@@ -608,7 +757,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
         {mode === 'event' && (
           <div className="form-grid">
             <div className="full">
-              <HoldingCombo label={t('Ativo', 'Asset')} placeholder={t('Ex.: WEGE3', 'E.g. WEGE3')} value={ticker} onChange={setTicker} holdings={holdingsFor('market')} autoFocus={!initAsset} />
+              <HoldingPicker label={t('Ativo', 'Asset')} holdings={marketHoldings} value={ticker} onChange={setTicker} sub={(a) => marketSub(a)} empty={t('Você ainda não tem ações lançadas.', "You don't have any stocks yet.")} />
             </div>
             <label className="field">
               <span>{t('Evento', 'Event')}</span>
@@ -731,13 +880,80 @@ function PriceHint({ info, manual, date, onReset }: { info: { state: string; res
   return <span className="hint" style={{ color: 'var(--warn-ink)' }}>{r.hint ?? t('Preço não encontrado para essa data — digite o valor.', 'No price found for this date — type it in.')}</span>;
 }
 
-function InstitutionField({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: string[] }) {
+/** Bank / broker picker: a plain list (yours first), with "Outro…" to type a name. */
+function InstitutionField({ value, onChange, options, label }: { value: string; onChange: (v: string) => void; options: string[]; label?: string }) {
+  const yours = options.filter((o) => o && !INSTITUTIONS.includes(o));
+  const used = options.filter((o) => INSTITUTIONS.includes(o));
+  const known = !value || INSTITUTIONS.includes(value) || yours.includes(value);
+  const [typing, setTyping] = useState(!known);
   return (
     <label className="field">
-      <span>{t('Corretora / banco', 'Broker / bank')}</span>
-      <input className="input" list="institutions" value={value} onChange={(e) => onChange(e.target.value)} placeholder={t('XP, Nubank, Avenue…', 'XP, Nubank, Avenue…')} />
-      <datalist id="institutions">{options.map((o) => <option key={o} value={o} />)}</datalist>
+      <span className="row">
+        {label ?? t('Corretora / banco', 'Broker / bank')}
+        {typing && <button type="button" className="link-btn" onClick={() => { setTyping(false); onChange(''); }}>{t('ver lista', 'show list')}</button>}
+      </span>
+      {typing ? (
+        <input className="input" autoFocus value={value} onChange={(e) => onChange(e.target.value)} placeholder={t('Nome do banco ou corretora', 'Bank or broker name')} />
+      ) : (
+        <select
+          className="input"
+          value={value}
+          onChange={(e) => {
+            if (e.target.value === '__other') {
+              setTyping(true);
+              onChange('');
+            } else onChange(e.target.value);
+          }}
+        >
+          <option value="">{t('Escolha…', 'Choose…')}</option>
+          {(used.length > 0 || yours.length > 0) && (
+            <optgroup label={t('Que você já usa', 'You already use')}>
+              {[...used, ...yours].map((o) => <option key={'u' + o} value={o}>{o}</option>)}
+            </optgroup>
+          )}
+          <optgroup label={t('Bancos e corretoras', 'Banks and brokers')}>
+            {INSTITUTIONS.filter((o) => !used.includes(o)).map((o) => <option key={o} value={o}>{o}</option>)}
+          </optgroup>
+          <option value="__other">{t('Outro…', 'Other…')}</option>
+        </select>
+      )}
     </label>
+  );
+}
+
+/** Pick one of your holdings from a list (no typing, no pop-ups). */
+function HoldingPicker({
+  label, holdings, value, onChange, sub, empty,
+}: { label: string; holdings: Asset[]; value: string; onChange: (v: string) => void; sub: (a: Asset) => string; empty: string }) {
+  const [q, setQ] = useState('');
+  const fq = q.trim().toUpperCase();
+  const list = holdings.filter((a) => !fq || a.ticker.toUpperCase().includes(fq) || (a.name ?? '').toUpperCase().includes(fq));
+  return (
+    <div className="field">
+      <span className="row">
+        {label}
+        {holdings.length > 6 && <input className="picker-filter" placeholder={t('filtrar', 'filter')} value={q} onChange={(e) => setQ(e.target.value)} />}
+      </span>
+      {!holdings.length ? (
+        <div className="picker-empty muted small">{empty}</div>
+      ) : (
+        <div className="picker" role="listbox">
+          {list.map((a) => {
+            const on = a.ticker.toUpperCase() === value.trim().toUpperCase();
+            return (
+              <button type="button" role="option" aria-selected={on} key={a.id} className={'picker-item' + (on ? ' on' : '')} onClick={() => onChange(a.ticker)}>
+                <Logo symbol={a.ticker} market={marketOf(a.cls, currencyOf(a))} cls={a.cls} size={28} />
+                <span className="ci-text">
+                  <b>{a.ticker}</b>
+                  <span>{sub(a)}</span>
+                </span>
+                <span className="picker-check">{on && <Icon name="check" size={15} />}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -914,46 +1130,3 @@ function titleCase(s: string) {
 }
 
 /** Simple picker among your own holdings (fixed income, proventos, eventos). */
-function HoldingCombo({
-  label, value, onChange, holdings, placeholder, autoFocus,
-}: { label: string; value: string; onChange: (v: string) => void; holdings: Asset[]; placeholder: string; autoFocus?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
-  const fq = value.trim().toUpperCase();
-  const list = holdings.filter((a) => !fq || a.ticker.toUpperCase().includes(fq) || (a.name ?? '').toUpperCase().includes(fq)).slice(0, 8);
-  const exact = holdings.some((a) => a.ticker.toUpperCase() === fq);
-  const show = open && list.length > 0 && !exact;
-  return (
-    <label className="field combo">
-      <span>{label}</span>
-      <input
-        className="input"
-        value={value}
-        placeholder={placeholder}
-        autoFocus={autoFocus}
-        onChange={(e) => { onChange(e.target.value); setOpen(true); setActive(0); }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-        onKeyDown={(e) => {
-          if (!show) return;
-          if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, list.length - 1)); }
-          if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
-          if (e.key === 'Enter') { e.preventDefault(); onChange(list[active].ticker); setOpen(false); }
-        }}
-      />
-      {show && (
-        <div className="combo-list">
-          {list.map((a, i) => (
-            <div key={a.id} className={'combo-item' + (i === active ? ' on' : '')} onMouseDown={() => { onChange(a.ticker); setOpen(false); }}>
-              <Logo symbol={a.ticker} market={marketOf(a.cls, currencyOf(a))} cls={a.cls} size={26} />
-              <span className="ci-text">
-                <b>{a.ticker}</b>
-                <span>{a.name ?? CLASS_LABEL[a.cls]}</span>
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </label>
-  );
-}

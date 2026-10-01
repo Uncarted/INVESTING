@@ -138,6 +138,8 @@ export function runMarket(asset: Asset, txs: Transaction[], until?: string, sett
 export function fixedAnnualRate(asset: Asset, s: Settings): number {
   const f = asset.fixed;
   if (!f) return 0;
+  // Poupança: 0,5% a.m. + TR while Selic > 8,5%; otherwise 70% of Selic (TR ignored).
+  if (f.kind === 'POUPANCA') return s.selicRate > 8.5 ? 6.17 : s.selicRate * 0.7;
   switch (f.indexer) {
     case 'CDI':
       return (s.cdiRate * f.rate) / 100;

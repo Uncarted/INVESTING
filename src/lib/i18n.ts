@@ -46,8 +46,8 @@ const CUR: Record<Lang, Record<Currency, string>> = {
   en: { BRL: 'Real', USD: 'Dollar', EUR: 'Euro' },
 };
 const KIND: Record<Lang, Record<FixedKind, string>> = {
-  pt: { CDB: 'CDB', LCI: 'LCI', LCA: 'LCA', LC: 'LC', TESOURO: 'Tesouro Direto', DEBENTURE: 'Debênture', DEBENTURE_INCENTIVADA: 'Debênture incentivada', CRI: 'CRI', CRA: 'CRA', POUPANCA: 'Poupança', OUTRO: 'Outro' },
-  en: { CDB: 'CDB', LCI: 'LCI', LCA: 'LCA', LC: 'LC', TESOURO: 'Tesouro Direto', DEBENTURE: 'Debenture', DEBENTURE_INCENTIVADA: 'Tax-free debenture', CRI: 'CRI', CRA: 'CRA', POUPANCA: 'Savings (poupança)', OUTRO: 'Other' },
+  pt: { CDB: 'CDB', LCI: 'LCI', LCA: 'LCA', LC: 'LC', TESOURO: 'Tesouro Direto', DEBENTURE: 'Debênture', DEBENTURE_INCENTIVADA: 'Debênture incentivada', CRI: 'CRI', CRA: 'CRA', POUPANCA: 'Poupança', CONTA: 'Conta remunerada / caixinha', OUTRO: 'Outro' },
+  en: { CDB: 'CDB', LCI: 'LCI', LCA: 'LCA', LC: 'LC', TESOURO: 'Tesouro Direto', DEBENTURE: 'Debenture', DEBENTURE_INCENTIVADA: 'Tax-free debenture', CRI: 'CRI', CRA: 'CRA', POUPANCA: 'Savings (poupança)', CONTA: 'Yield account / caixinha', OUTRO: 'Other' },
 };
 const IDX: Record<Lang, Record<Indexer, string>> = {
   pt: { CDI: '% do CDI', SELIC: 'Selic +', IPCA: 'IPCA +', PRE: 'Prefixado' },

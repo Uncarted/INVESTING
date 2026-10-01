@@ -31,7 +31,7 @@ export const CLASS_ORDER: AssetClass[] = [
 
 export type FixedKind =
   | 'CDB' | 'LCI' | 'LCA' | 'LC' | 'TESOURO' | 'DEBENTURE' | 'DEBENTURE_INCENTIVADA'
-  | 'CRI' | 'CRA' | 'POUPANCA' | 'OUTRO';
+  | 'CRI' | 'CRA' | 'POUPANCA' | 'CONTA' | 'OUTRO';
 
 export const FIXED_KIND_LABEL: Record<FixedKind, string> = {
   CDB: 'CDB',
@@ -44,6 +44,7 @@ export const FIXED_KIND_LABEL: Record<FixedKind, string> = {
   CRI: 'CRI',
   CRA: 'CRA',
   POUPANCA: 'Poupança',
+  CONTA: 'Conta remunerada / caixinha',
   OUTRO: 'Outro',
 };
 
@@ -62,6 +63,8 @@ export interface FixedIncomeInfo {
   /** CDI: percentage of CDI (e.g. 110). SELIC/IPCA: spread in % a.a. PRE: rate in % a.a. */
   rate: number;
   maturity?: string;
+  /** Can be withdrawn any time (no maturity): caixinhas, contas remuneradas, poupança, many CDBs. */
+  daily?: boolean;
   issuer?: string;
 }
 
@@ -135,7 +138,7 @@ export interface Transaction {
   fxRate?: number;
   institution?: string;
   notes?: string;
-  source?: 'manual' | 'b3' | 'csv';
+  source?: 'manual' | 'b3' | 'csv' | 'auto';
   /** Dedupe key for imported rows. */
   importKey?: string;
   createdAt: string;
@@ -156,6 +159,10 @@ export interface Settings {
   hideValues: boolean;
   /** UI language; undefined = follow the browser. */
   language?: 'pt' | 'en';
+  /** Add dividends/JCP/FII income automatically for the stocks you hold (default on). */
+  autoDividends?: boolean;
+  /** Last automatic dividend check (ISO date). */
+  dividendsCheckedAt?: string;
   lastBackupAt?: string;
 }
 

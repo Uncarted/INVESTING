@@ -613,3 +613,63 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .cnpj-inline { display: block; margin-top: 4px; width: 100%; max-width: 260px; border: 0; border-bottom: 1px dashed var(--border-strong); background: none; color: var(--text-2); font: inherit; font-size: 12px; padding: 2px 0; outline: none; }
 .cnpj-inline:focus { border-bottom-color: var(--accent); color: var(--text); }
 .cnpj-inline::placeholder { color: var(--muted); }
+
+/* ---------- Proventos ---------- */
+.div-auto { display: flex; gap: 18px; align-items: flex-start; }
+.div-auto-text { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.div-auto-text b { font-size: 15px; }
+.div-auto-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.switch { position: relative; display: inline-block; width: 38px; height: 22px; cursor: pointer; }
+.switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--surface-3); transition: background 0.2s; }
+.switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-2); transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.2s; }
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::after { transform: translateX(16px); background: var(--accent-ink, #11120e); }
+.pay-list { display: flex; flex-direction: column; padding: 4px 8px 10px; }
+.pay-row { display: grid; grid-template-columns: 110px 80px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 10px; font-variant-numeric: tabular-nums; }
+.pay-row.clickable { cursor: pointer; }
+.pay-row:hover { background: var(--surface-2); }
+.pay-date { color: var(--text-2); font-size: 13px; }
+.pay-amt { font-weight: 620; text-align: right; }
+@media (max-width: 640px) {
+  .div-auto { flex-direction: column; }
+  .div-auto-actions { flex-direction: row; align-items: center; }
+  .pay-row { grid-template-columns: 84px 64px minmax(0, 1fr) auto; gap: 8px; padding: 9px 6px; }
+}
+
+/* ---------- Renda fixa form ---------- */
+.ftype-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.ftype { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 9px 10px; border-radius: 12px; border: 1px solid var(--border-strong); background: transparent; color: var(--text); font: inherit; cursor: pointer; text-align: left; transition: background 0.15s, border-color 0.15s; min-width: 0; }
+.ftype b { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ftype span { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ftype:hover { background: var(--surface-2); }
+.ftype.on { border-color: var(--accent); background: var(--accent-soft); }
+.ftype.on span { color: var(--accent-text); }
+.rate-row { display: flex; align-items: center; gap: 8px; }
+.rate-row .input.num { width: 90px; flex: none; }
+.rate-idx { width: auto; flex: 1; min-width: 0; }
+.rate-fixed { font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.rate-unit { font-size: 12.5px; white-space: nowrap; }
+.mini-check { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); cursor: pointer; font-weight: 500; }
+.mini-check input { width: 14px; height: 14px; }
+.input-static { display: flex; align-items: center; font-size: 13px; }
+.name-preview { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 10px 14px; border-radius: 12px; background: var(--surface-2); min-height: 44px; }
+.name-preview b { font-weight: 600; }
+.name-preview .input { height: 32px; }
+.icon-btn.sm { width: 26px; height: 26px; }
+
+/* Holding picker (provento, evento, resgate) */
+.picker { display: flex; flex-direction: column; gap: 2px; max-height: 236px; overflow: auto; padding: 4px; border: 1px solid var(--border-strong); border-radius: 14px; }
+.picker-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; cursor: pointer; text-align: left; transition: background 0.12s; }
+.picker-item:hover { background: var(--surface-2); }
+.picker-item.on { background: var(--accent-soft); }
+.picker-item .ci-text { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }
+.picker-item .ci-text b { font-weight: 600; font-size: 13.5px; }
+.picker-item .ci-text span { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.picker-check { width: 18px; color: var(--accent-text); display: grid; place-items: center; }
+.picker-filter { margin-left: auto; border: 0; border-bottom: 1px solid var(--border-strong); background: none; color: var(--text); font: inherit; font-size: 12px; width: 110px; padding: 2px 0; outline: none; }
+.picker-filter:focus { border-bottom-color: var(--accent); }
+.picker-empty { padding: 16px; border: 1px dashed var(--border-strong); border-radius: 14px; text-align: center; }
+@media (max-width: 640px) {
+  .ftype-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
