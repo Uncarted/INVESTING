@@ -647,6 +647,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
                           picked={fundPick}
                           onType={(v) => { setCustomName(v); setFundPick(null); }}
                           onPick={(f) => { setFundPick(f); setCustomName(prettyFund(f.name)); }}
+                          onListed={(pk) => { setMode('market'); setSide('BUY'); choose(pk); }}
                         />
                       )}
                       {fType === 'OUTRO' && (
@@ -920,16 +921,34 @@ function InstitutionField({ value, onChange, options, label }: { value: string; 
 }
 
 /** Search the CVM fund registry by name or CNPJ. */
-function FundSearch({ value, picked, onType, onPick }: { value: string; picked: Fund | null; onType: (v: string) => void; onPick: (f: Fund) => void }) {
+function FundSearch({ value, picked, onType, onPick, onListed }: { value: string; picked: Fund | null; onType: (v: string) => void; onPick: (f: Fund) => void; onListed: (p: Pick) => void }) {
   const [res, setRes] = useState<Fund[]>([]);
+  const [listed, setListed] = useState<Pick[]>([]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [active, setActive] = useState(0);
   useEffect(() => {
-    if (picked || value.trim().length < 2) return setRes([]);
+    if (picked || value.trim().length < 2) {
+      setRes([]);
+      setListed([]);
+      return;
+    }
     let alive = true;
     setBusy(true);
-    const id = setTimeout(() => searchFunds(value).then((r) => alive && (setRes(r), setBusy(false), setActive(0))), 180);
+    // Listed on B3 (FIIs, ETFs, stocks): instant from the built-in list, then brapi's full list.
+    const local = searchDirectory(value, 4).filter((x) => x.kind !== 'U' && x.kind !== 'C').map(pickFromInfo);
+    setListed(local);
+    const id = setTimeout(() => {
+      searchFunds(value).then((r) => alive && (setRes(r), setBusy(false), setActive(0)));
+      searchSymbols(value, getData().settings).then((hits) => {
+        if (!alive) return;
+        const extra = hits
+          .filter((h) => h.market === 'B3' && !local.some((l) => l.symbol === h.symbol))
+          .slice(0, 4)
+          .map((h): Pick => ({ symbol: h.symbol, cls: guessClass(h.symbol) ?? 'ACAO', currency: 'BRL', market: 'B3' }));
+        setListed([...local, ...extra].slice(0, 5));
+      });
+    }, 180);
     return () => {
       alive = false;
       clearTimeout(id);
@@ -957,7 +976,7 @@ function FundSearch({ value, picked, onType, onPick }: { value: string; picked: 
         }}
       />
       {picked && <span className="hint">CNPJ {picked.cnpj} · {FUND_CLASS(picked.cls, getLang() !== 'en')}</span>}
-      {open && !picked && value.trim().length >= 2 && (res.length > 0 || !busy) && (
+      {open && !picked && value.trim().length >= 2 && (res.length > 0 || listed.length > 0 || !busy) && (
         <div className="combo-list">
           {res.map((f, i) => (
             <div key={f.cnpj} className={'combo-item' + (i === active ? ' on' : '')} onMouseDown={() => pick(f)}>
@@ -967,7 +986,22 @@ function FundSearch({ value, picked, onType, onPick }: { value: string; picked: 
               </span>
             </div>
           ))}
-          {!res.length && <div className="combo-item muted small" style={{ cursor: 'default' }}>{t('Nenhum fundo encontrado — pode deixar o nome assim mesmo.', 'No fund found — you can keep the name as typed.')}</div>}
+          {listed.length > 0 && (
+            <>
+              <div className="combo-section">{t('Negociados na bolsa', 'Traded on the exchange')}</div>
+              {listed.map((l) => (
+                <div key={'b' + l.symbol} className="combo-item" onMouseDown={() => onListed(l)}>
+                  <Logo symbol={l.symbol} market="B3" cls={l.cls} size={26} />
+                  <span className="ci-text">
+                    <b>{l.symbol}</b>
+                    <span>{[l.name, CLASS_LABEL[l.cls]].filter(Boolean).join(' · ')} · {t('lançar em Bolsa', 'add under Market')} →</span>
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+          {res.length > 0 && listed.length > 0 && <div className="combo-section">{t('Fundos (CVM)', 'Funds (CVM)')}</div>}
+          {!res.length && !listed.length && <div className="combo-item muted small" style={{ cursor: 'default' }}>{t('Nenhum fundo encontrado — pode deixar o nome assim mesmo.', 'No fund found — you can keep the name as typed.')}</div>}
         </div>
       )}
     </label>

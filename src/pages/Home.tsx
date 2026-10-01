@@ -375,61 +375,89 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
   );
 }
 
-/** Picked once per visit, so the line changes each time you come in but not while you look at it. */
-const SEED = Math.random();
+/** One line per day: the same all day long, a new one tomorrow. */
+const dayIndex = () => {
+  const d = new Date();
+  return d.getFullYear() * 372 + d.getMonth() * 31 + d.getDate();
+};
 
-/** A short, playful line that depends on the time of day and how the portfolio is doing today. */
+type Line = [pt: string, en: string];
+
+// "{n}" is replaced by the person's first name (or dropped, with its comma, when we don't know it).
+const LINES: Record<'quiet' | 'great' | 'good' | 'flat' | 'meh' | 'bad', Line[]> = {
+  quiet: [
+    ['Mercado fechado, {n}. Seu dinheiro também tem direito a folga.', 'Market’s closed, {n}. Your money gets a day off too.'],
+    ['Nada se mexe hoje, {n}. Aproveite enquanto ninguém perde nada.', 'Nothing’s moving today, {n}. Enjoy it while nobody’s losing.'],
+    ['Silêncio na bolsa, {n}. Nem o Ibovespa quer trabalhar hoje.', 'Silence on the exchange, {n}. Even the index called in sick.'],
+    ['Tudo parado, {n}. Ótimo dia pra fingir que você é investidor de longo prazo.', 'All quiet, {n}. Great day to pretend you’re a long-term investor.'],
+    ['Zero movimento, {n}. Seu patrimônio está meditando.', 'Zero movement, {n}. Your net worth is meditating.'],
+    ['Mercado dormindo, {n}. Não acorde ele.', 'Market’s asleep, {n}. Don’t wake it up.'],
+  ],
+  great: [
+    ['Dia histórico, {n}. Pode ligar pro gerente e falar grosso.', 'Historic day, {n}. Go ahead, call your banker and talk big.'],
+    ['Olha o Warren Buffett aí, {n}. Só não conta pra Receita ainda.', 'Look at you, Warren Buffett. Just don’t tell the taxman yet, {n}.'],
+    ['Hoje a bolsa trabalhou pra você, {n}. Folga merecida.', 'The market worked for you today, {n}. Take the afternoon off.'],
+    ['{n}, se fosse todo dia assim, você já estaria em Mônaco.', '{n}, if every day were like this you’d be in Monaco by now.'],
+    ['Que dia, {n}. Tira print antes que acabe.', 'What a day, {n}. Screenshot it before it’s gone.'],
+    ['Verde que dói o olho, {n}. Bom demais pra ser verdade.', 'Green so bright it hurts, {n}. Almost too good to be true.'],
+    ['{n}, hoje você é o gênio do grupo da família. Aproveite, dura pouco.', '{n}, today you’re the family genius. Enjoy it, it won’t last.'],
+  ],
+  good: [
+    ['Dia bom, {n}. Nada de champanhe, mas um cafezinho caro tá liberado.', 'Good day, {n}. No champagne, but the fancy coffee is on you.'],
+    ['Subindo devagarinho, {n}. Do jeito que os chatos recomendam.', 'Slowly climbing, {n}. Exactly how the boring people recommend.'],
+    ['{n}, sua carteira acordou de bom humor. Não estraga.', '{n}, your portfolio woke up in a good mood. Don’t ruin it.'],
+    ['Verdinho, {n}. Juros compostos agradecem sua paciência.', 'A little green, {n}. Compound interest thanks you for your patience.'],
+    ['Dia positivo, {n}. Ainda não dá pra largar o emprego.', 'Positive day, {n}. Still not quit-your-job positive.'],
+    ['{n}, hoje o mercado concordou com você. Raro, aproveite.', '{n}, the market agreed with you today. Rare. Savor it.'],
+    ['Pequena vitória, {n}. As grandes são feitas delas.', 'Small win, {n}. The big ones are made of these.'],
+  ],
+  flat: [
+    ['Dia morno, {n}. Nem pra comemorar, nem pra chorar.', 'Lukewarm day, {n}. Nothing to celebrate, nothing to cry about.'],
+    ['O mercado está de lado, {n}. Você não precisa ficar olhando.', 'Market’s going sideways, {n}. You don’t have to watch it.'],
+    ['Tudo estável, {n}. Quase entediante, que é exatamente o objetivo.', 'All stable, {n}. Almost boring, which is the whole point.'],
+    ['{n}, hoje nada aconteceu. Seu yoga financeiro está em dia.', '{n}, nothing happened today. Your financial yoga is on point.'],
+    ['Placar zerado, {n}. Empate também é resultado.', 'Scoreless draw, {n}. A tie still counts.'],
+    ['Nem sobe nem desce, {n}. A bolsa está em modo elevador quebrado.', 'Not up, not down, {n}. The market’s a broken elevator today.'],
+  ],
+  meh: [
+    ['Um vermelhinho, {n}. Nada que um café forte não resolva.', 'A bit of red, {n}. Nothing a strong coffee can’t fix.'],
+    ['Pequena queda, {n}. O longo prazo nem ficou sabendo.', 'Small dip, {n}. The long run didn’t even notice.'],
+    ['{n}, o mercado acordou de mau humor. Não leve pro pessoal.', '{n}, the market woke up grumpy. Don’t take it personally.'],
+    ['Respira, {n}. É oscilação, não é o fim do mundo.', 'Breathe, {n}. It’s a wobble, not the apocalypse.'],
+    ['Dia meio torto, {n}. Feche o app e vá viver um pouco.', 'Slightly crooked day, {n}. Close the app and go live a little.'],
+    ['{n}, hoje é dia de lembrar por que você não opera day trade.', '{n}, today’s a reminder of why you don’t day-trade.'],
+  ],
+  bad: [
+    ['Dia feio, {n}. Talvez seja melhor não abrir o app de novo hoje.', 'Ugly day, {n}. Maybe don’t open the app again today.'],
+    ['Promoção na bolsa, {n}. Tudo mais barato, inclusive sua autoestima.', 'Stocks are on sale, {n}. So is your self-esteem.'],
+    ['{n}, o mercado decidiu testar seus nervos. Não reprove.', '{n}, the market is testing your nerves. Don’t fail.'],
+    ['Vermelho sangue, {n}. Quem vende no pânico financia quem compra.', 'Blood red, {n}. Panic sellers fund the people buying.'],
+    ['Hoje doeu, {n}. Amanhã a gente finge que não viu.', 'Today hurt, {n}. Tomorrow we pretend it didn’t happen.'],
+    ['{n}, respira fundo e lembre: só perde quem vende.', '{n}, deep breath: it’s only a loss if you sell.'],
+    ['Dia de guerra, {n}. Capacete, café e nada de decisão burra.', 'War day, {n}. Helmet on, coffee in hand, no dumb decisions.'],
+  ],
+};
+
+/** A short, one-a-day line that depends on how the portfolio is doing today. */
 function greeting(name: string, dayChange: number, total: number) {
-  const h = new Date().getHours();
-  const hello = h < 5 ? t('Boa noite', 'Good evening') : h < 12 ? t('Bom dia', 'Good morning') : h < 18 ? t('Boa tarde', 'Good afternoon') : t('Boa noite', 'Good evening');
-  const who = name ? <b>{name}</b> : null;
-  const hi = <>{hello}{who && <>, {who}</>}.</>;
-  const nm = who ? <>, {who}</> : null;
   const p = total ? dayChange / (total - dayChange || total) : 0;
-
-  const lines: React.ReactNode[] =
-    dayChange === 0
-      ? [
-          <>{hi} {t('Mercado quieto por enquanto.', 'Markets are quiet for now.')}</>,
-          <>{t('Que bom te ver de novo', 'Good to see you again')}{nm}. {t('Tudo em ordem por aqui.', 'Everything is in order.')}</>,
-          <>{hi} {t('Seu dinheiro está descansando. Você também deveria.', 'Your money is resting. You should too.')}</>,
-          <>{t('Olá de novo', 'Welcome back')}{nm}. {t('Nada pegando fogo hoje.', 'Nothing on fire today.')} 🧯</>,
-        ]
-      : p >= 0.015
-        ? [
-            <>{hi} {t('Dia de ouro na carteira', 'Golden day for the portfolio')} 🚀</>,
-            <>{t('Olha só quem está ficando rico', "Look who's getting rich")}{nm}. 💸</>,
-            <>{hi} {t('Hoje o mercado trabalhou pra você', 'Today the market worked for you')} 😎</>,
-            <>{t('Pode pedir a sobremesa', 'Go ahead, order dessert')}{nm}. {t('Hoje tá verde.', "It's green today.")} 🍰</>,
-          ]
-        : p > 0.003
-          ? [
-              <>{hi} {t('Dia bom na carteira', 'Good day for your portfolio')} 📈</>,
-              <>{hi} {t('Tudo subindo, devagar e sempre.', 'Slow and steady, all up.')} 🐢</>,
-              <>{t('Bom te ver', 'Nice to see you')}{nm}. {t('O verde combina com você.', 'Green looks good on you.')}</>,
-              <>{hi} {t('Seus investimentos acordaram de bom humor.', 'Your investments woke up in a good mood.')} ☀️</>,
-            ]
-          : p >= -0.003
-            ? [
-                <>{hi} {t('Dia morno — nem frio, nem quente.', 'Lukewarm day — nothing to see.')}</>,
-                <>{hi} {t('O mercado está de lado. Você não precisa ficar.', "The market's going sideways. You don't have to.")}</>,
-                <>{t('Olá de novo', 'Welcome back')}{nm}. {t('Tudo estável, quase entediante.', 'All stable, almost boring.')} 😴</>,
-                <>{hi} {t('Sem emoções fortes hoje.', 'No drama today.')}</>,
-              ]
-            : p > -0.015
-              ? [
-                  <>{hi} {t('Um dia meio vermelhinho. Nada que um café não resolva.', 'A bit red today. Nothing coffee can\'t fix.')} ☕</>,
-                  <>{hi} {t('Pequena queda — o longo prazo agradece a paciência.', 'Small dip — the long run thanks you for your patience.')}</>,
-                  <>{t('Respira', 'Breathe')}{nm}. {t('É só uma oscilação.', "It's just a wobble.")} 🧘</>,
-                  <>{hi} {t('Hoje o mercado acordou de mau humor.', 'The market woke up grumpy today.')}</>,
-                ]
-              : [
-                  <>{hi} {t('Dia feio. Talvez não abra o app de novo hoje.', "Ugly day. Maybe don't open the app again today.")} 🙈</>,
-                  <>{t('Coragem', 'Hang in there')}{nm}. {t('Promoção na bolsa: tudo mais barato.', 'Stocks are on sale today.')} 🏷️</>,
-                  <>{hi} {t('O mercado resolveu testar seus nervos.', 'The market decided to test your nerves.')} 🎢</>,
-                  <>{t('Fecha o app e vai dar uma volta', 'Close the app and go for a walk')}{nm}. {t('Amanhã é outro dia.', 'Tomorrow is another day.')} 🌧️</>,
-                ];
-  return lines[Math.floor(SEED * lines.length)];
+  const mood = dayChange === 0 ? 'quiet' : p >= 0.015 ? 'great' : p > 0.003 ? 'good' : p >= -0.003 ? 'flat' : p > -0.015 ? 'meh' : 'bad';
+  const list = LINES[mood];
+  const [pt, en] = list[dayIndex() % list.length];
+  const text = t(pt, en);
+  if (!name) {
+    // Drop the name and the punctuation around it.
+    const clean = text.replace(/,?\s*\{n\}[,.]?\s*/, (m) => (m.trim().endsWith('.') ? '. ' : m.startsWith(',') ? ' ' : '')).replace(/\s+([.,])/g, '$1').trim();
+    return <>{clean.charAt(0).toUpperCase() + clean.slice(1)}</>;
+  }
+  const [before, after] = text.split('{n}');
+  return (
+    <>
+      {before}
+      <b>{name}</b>
+      {after}
+    </>
+  );
 }
 
 const toneOf = (v: number) => (v > 0.004 ? 'pos' : v < -0.004 ? 'neg' : '');
