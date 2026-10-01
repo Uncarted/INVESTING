@@ -47,9 +47,9 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
   const treatment = (s: (typeof sales)[number]) => {
     const m = tax.months.find((x) => x.month === s.date.slice(0, 7));
     if (s.cls === 'EXTERIOR') return s.gain > 0 ? t(`15% · na declaração de ${year + 1}`, `15% · on the ${year + 1} return`) : t('Prejuízo · abate lucros do exterior no ano', 'Loss · offsets foreign gains this year');
-    if (s.cls === 'CRIPTO') return m?.cryptoExempt ? t(`Isento · vendas ≤ ${money(CRYPTO_EXEMPTION, { always: true })} no mês`, `Exempt · sales ≤ ${money(CRYPTO_EXEMPTION, { always: true })} that month`) : t('15% · DARF 4600 (GCAP)', '15% · DARF 4600 (GCAP)');
+    if (s.cls === 'CRIPTO') return m?.cryptoExempt ? t(`Isento · vendas ≤ ${money(CRYPTO_EXEMPTION)} no mês`, `Exempt · sales ≤ ${money(CRYPTO_EXEMPTION)} that month`) : t('15% · DARF 4600 (GCAP)', '15% · DARF 4600 (GCAP)');
     if (s.gain <= 0) return t('Prejuízo · compensa lucros futuros', 'Loss · offsets future gains');
-    if (s.cls === 'ACAO' && m?.acoesExempt) return t(`Isento · vendas ≤ ${money(ACOES_EXEMPTION, { always: true })} no mês`, `Exempt · sales ≤ ${money(ACOES_EXEMPTION, { always: true })} that month`);
+    if (s.cls === 'ACAO' && m?.acoesExempt) return t(`Isento · vendas ≤ ${money(ACOES_EXEMPTION)} no mês`, `Exempt · sales ≤ ${money(ACOES_EXEMPTION)} that month`);
     const due = fmtDate(darfDue(s.date.slice(0, 7)));
     return s.cls === 'FII' ? t(`20% · DARF até ${due}`, `20% · DARF by ${due}`) : t(`15% · DARF até ${due}`, `15% · DARF by ${due}`);
   };
@@ -75,7 +75,7 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
 
       <div className="grid grid-4">
         <div className="card card-pad kpi"><div className="label">{t(`Imposto estimado em ${year}`, `Estimated tax for ${year}`)}</div><div className="value">{money(yearTax)}</div><div className="sub muted">DARF {money(tax.totals.darf)} · {t('exterior', 'foreign')} {money(tax.exterior.tax)}{cryptoTax ? ` · cripto ${money(cryptoTax)}` : ''}</div></div>
-        <div className="card card-pad kpi"><div className="label">{t('Lucro isento em ações', 'Tax-exempt stock gains')}</div><div className="value">{money(tax.totals.acoesExemptGain)}</div><div className="sub muted">{t('vendas', 'sales')} ≤ {money(ACOES_EXEMPTION, { always: true })}/{t('mês', 'month')}</div></div>
+        <div className="card card-pad kpi"><div className="label">{t('Lucro isento em ações', 'Tax-exempt stock gains')}</div><div className="value">{money(tax.totals.acoesExemptGain)}</div><div className="sub muted">{t('vendas', 'sales')} ≤ {money(ACOES_EXEMPTION)}/{t('mês', 'month')}</div></div>
         <div className="card card-pad kpi"><div className="label">{t('Prejuízo a compensar', 'Losses to offset')}</div><div className="value">{money((tax.months.at(-1)?.comumLossBalance ?? 0) + (tax.months.at(-1)?.fiiLossBalance ?? 0))}</div><div className="sub muted">{t('comum', 'regular')} {money(tax.months.at(-1)?.comumLossBalance ?? 0)} · FII {money(tax.months.at(-1)?.fiiLossBalance ?? 0)}</div></div>
         <div className="card card-pad kpi"><div className="label">{t('Proventos recebidos', 'Dividends received')}</div><div className="value">{money(income.reduce((s, r) => s + r.dividends + r.jcp + r.fiiIncome + r.other, 0))}</div><div className="sub muted">{income.length} {t('pagador(es)', 'payer(s)')}</div></div>
       </div>
@@ -128,16 +128,16 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
                             <button className="icon-btn" title={t('Copiar', 'Copy')} onClick={() => { navigator.clipboard?.writeText(b.description); toast(t('Discriminação copiada', 'Description copied')); }}><Icon name="copy" size={15} /></button>
                           </div>
                         </td>
-                        <td className="num">{money(b.prevCost, { always: true })}</td>
-                        <td className="num">{money(b.cost, { always: true })}</td>
+                        <td className="num">{money(b.prevCost)}</td>
+                        <td className="num">{money(b.cost)}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr>
                       <td colSpan={3}>Total</td>
-                      <td className="num">{money(bens.reduce((s, b) => s + b.prevCost, 0), { always: true })}</td>
-                      <td className="num">{money(bens.reduce((s, b) => s + b.cost, 0), { always: true })}</td>
+                      <td className="num">{money(bens.reduce((s, b) => s + b.prevCost, 0))}</td>
+                      <td className="num">{money(bens.reduce((s, b) => s + b.cost, 0))}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -167,9 +167,9 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
                           <td>{fmtDate(s.date)}</td>
                           <td><b>{a?.ticker ?? '—'}</b> {a && <ClassChip cls={a.cls} />}</td>
                           <td className="num">{qty(s.quantity)}</td>
-                          <td className="num">{money(s.grossValue, { always: true })}</td>
-                          <td className="num">{money(s.cost, { always: true })}</td>
-                          <td className="num"><Delta value={s.gain}>{money(s.gain, { always: true })}</Delta></td>
+                          <td className="num">{money(s.grossValue)}</td>
+                          <td className="num">{money(s.cost)}</td>
+                          <td className="num"><Delta value={s.gain}>{money(s.gain)}</Delta></td>
                           <td className="small">{treatment(s)}</td>
                         </tr>
                       );
@@ -178,8 +178,8 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
                   <tfoot>
                     <tr>
                       <td colSpan={5}>{t('Imposto estimado do ano', 'Estimated tax for the year')}</td>
-                      <td className="num"><Delta value={yearSales.reduce((x, s) => x + s.gain, 0)}>{money(yearSales.reduce((x, s) => x + s.gain, 0), { always: true })}</Delta></td>
-                      <td><b>{money(yearTax, { always: true })}</b></td>
+                      <td className="num"><Delta value={yearSales.reduce((x, s) => x + s.gain, 0)}>{money(yearSales.reduce((x, s) => x + s.gain, 0))}</Delta></td>
+                      <td><b>{money(yearTax)}</b></td>
                     </tr>
                   </tfoot>
                 </table>
@@ -209,16 +209,16 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
                         {active.filter((m) => m.acoesSales || m.etfResult || m.bdrResult || m.comumTax).map((m) => (
                           <tr key={m.month}>
                             <td>{MONTHS_LONG[Number(m.month.slice(5)) - 1]}</td>
-                            <td className="num">{money(m.acoesSales, { always: true })}</td>
+                            <td className="num">{money(m.acoesSales)}</td>
                             <td className="num">
-                              <Delta value={m.acoesResult}>{money(m.acoesResult, { always: true })}</Delta>
+                              <Delta value={m.acoesResult}>{money(m.acoesResult)}</Delta>
                               {m.acoesExempt && m.acoesResult > 0 && <div><span className="chip">{t('isento', 'exempt')}</span></div>}
                             </td>
-                            <td className="num"><Delta value={m.etfResult + m.bdrResult}>{money(m.etfResult + m.bdrResult, { always: true })}</Delta></td>
-                            <td className="num">{m.comumLossUsed ? money(m.comumLossUsed, { always: true }) : ''}</td>
-                            <td className="num">{money(m.comumBase, { always: true })}</td>
-                            <td className="num" style={{ fontWeight: 600 }}>{money(m.comumTax, { always: true })}</td>
-                            <td className="num text-2">{money(m.comumLossBalance, { always: true })}</td>
+                            <td className="num"><Delta value={m.etfResult + m.bdrResult}>{money(m.etfResult + m.bdrResult)}</Delta></td>
+                            <td className="num">{m.comumLossUsed ? money(m.comumLossUsed) : ''}</td>
+                            <td className="num">{money(m.comumBase)}</td>
+                            <td className="num" style={{ fontWeight: 600 }}>{money(m.comumTax)}</td>
+                            <td className="num text-2">{money(m.comumLossBalance)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -237,11 +237,11 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
                           {active.filter((m) => m.fiiSales).map((m) => (
                             <tr key={m.month}>
                               <td>{MONTHS_LONG[Number(m.month.slice(5)) - 1]}</td>
-                              <td className="num">{money(m.fiiSales, { always: true })}</td>
-                              <td className="num"><Delta value={m.fiiResult}>{money(m.fiiResult, { always: true })}</Delta></td>
-                              <td className="num">{m.fiiLossUsed ? money(m.fiiLossUsed, { always: true }) : ''}</td>
-                              <td className="num" style={{ fontWeight: 600 }}>{money(m.fiiTax, { always: true })}</td>
-                              <td className="num text-2">{money(m.fiiLossBalance, { always: true })}</td>
+                              <td className="num">{money(m.fiiSales)}</td>
+                              <td className="num"><Delta value={m.fiiResult}>{money(m.fiiResult)}</Delta></td>
+                              <td className="num">{m.fiiLossUsed ? money(m.fiiLossUsed) : ''}</td>
+                              <td className="num" style={{ fontWeight: 600 }}>{money(m.fiiTax)}</td>
+                              <td className="num text-2">{money(m.fiiLossBalance)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -259,10 +259,10 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
                         {active.filter((m) => m.totalTax || m.darf || m.darfCarry).map((m) => (
                           <tr key={m.month}>
                             <td>{MONTHS_LONG[Number(m.month.slice(5)) - 1]}</td>
-                            <td className="num">{money(m.totalTax, { always: true })}</td>
-                            <td className="num">{m.irrfUsed ? `− ${money(m.irrfUsed, { always: true })}` : ''}</td>
+                            <td className="num">{money(m.totalTax)}</td>
+                            <td className="num">{m.irrfUsed ? `− ${money(m.irrfUsed)}` : ''}</td>
                             <td className="num" style={{ fontWeight: 650 }}>
-                              {m.darf ? money(m.darf, { always: true }) : <span className="muted small">{m.darfCarry ? t(`< R$10, acumula (${money(m.darfCarry, { always: true })})`, `< R$10, carried over (${money(m.darfCarry, { always: true })})`) : '—'}</span>}
+                              {m.darf ? money(m.darf) : <span className="muted small">{m.darfCarry ? t(`< R$10, acumula (${money(m.darfCarry)})`, `< R$10, carried over (${money(m.darfCarry)})`) : '—'}</span>}
                             </td>
                             <td>{m.darf ? fmtDate(darfDue(m.month)) : ''}</td>
                           </tr>
@@ -283,10 +283,10 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
                           {active.filter((m) => m.cryptoSales).map((m) => (
                             <tr key={m.month}>
                               <td>{MONTHS_LONG[Number(m.month.slice(5)) - 1]}</td>
-                              <td className="num">{money(m.cryptoSales, { always: true })}</td>
-                              <td className="num"><Delta value={m.cryptoGain}>{money(m.cryptoGain, { always: true })}</Delta></td>
+                              <td className="num">{money(m.cryptoSales)}</td>
+                              <td className="num"><Delta value={m.cryptoGain}>{money(m.cryptoGain)}</Delta></td>
                               <td>{m.cryptoExempt ? <span className="chip">{t('isento', 'exempt')}</span> : <span className="chip">{t('tributável', 'taxable')}</span>}</td>
-                              <td className="num">{money(m.cryptoTax, { always: true })}</td>
+                              <td className="num">{money(m.cryptoTax)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -299,7 +299,7 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
                   <div className="card card-pad">
                     <h2 style={{ fontSize: 15, marginTop: 0 }}>{t('Exterior (apuração anual — Lei 14.754/2023)', 'Foreign assets (yearly — Law 14.754/2023)')}</h2>
                     <p className="text-2" style={{ margin: 0 }}>
-                      {t('Vendas', 'Sales')} {money(tax.exterior.sales, { always: true })} · {t('resultado', 'result')} <Delta value={tax.exterior.result}>{money(tax.exterior.result, { always: true })}</Delta> · {t('IR estimado 15%', 'Estimated tax 15%')}: <b>{money(tax.exterior.tax, { always: true })}</b>{t(', pago na declaração anual. Valores em reais pela cotação do dia de cada operação.', ', paid with the annual return. Converted to reais at each trade-date exchange rate.')}
+                      {t('Vendas', 'Sales')} {money(tax.exterior.sales)} · {t('resultado', 'result')} <Delta value={tax.exterior.result}>{money(tax.exterior.result)}</Delta> · {t('IR estimado 15%', 'Estimated tax 15%')}: <b>{money(tax.exterior.tax)}</b>{t(', pago na declaração anual. Valores em reais pela cotação do dia de cada operação.', ', paid with the annual return. Converted to reais at each trade-date exchange rate.')}
                     </p>
                   </div>
                 )}
@@ -316,12 +316,12 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
                 <table className="table">
                   <thead><tr><th>{t('Linha', 'Line')}</th><th>{t('Descrição', 'Description')}</th><th className="num">{t('Valor', 'Amount')}</th></tr></thead>
                   <tbody>
-                    <tr><td>20</td><td>{t('Ganhos líquidos em operações com ações — vendas até R$ 20 mil/mês', 'Net stock gains — months with sales up to R$ 20k')}</td><td className="num">{money(tax.totals.acoesExemptGain, { always: true })}</td></tr>
+                    <tr><td>20</td><td>{t('Ganhos líquidos em operações com ações — vendas até R$ 20 mil/mês', 'Net stock gains — months with sales up to R$ 20k')}</td><td className="num">{money(tax.totals.acoesExemptGain)}</td></tr>
                     {income.filter((r) => r.dividends).map((r) => (
-                      <tr key={'d' + r.asset.id}><td>09</td><td>{t('Dividendos', 'Dividends')} — {r.asset.ticker}{r.asset.cnpj ? ` (CNPJ ${r.asset.cnpj})` : ''}</td><td className="num">{money(r.dividends, { always: true })}</td></tr>
+                      <tr key={'d' + r.asset.id}><td>09</td><td>{t('Dividendos', 'Dividends')} — {r.asset.ticker}{r.asset.cnpj ? ` (CNPJ ${r.asset.cnpj})` : ''}</td><td className="num">{money(r.dividends)}</td></tr>
                     ))}
                     {income.filter((r) => r.fiiIncome).map((r) => (
-                      <tr key={'f' + r.asset.id}><td>99</td><td>{t('Rendimentos de FII', 'REIT (FII) income')} — {r.asset.ticker}{r.asset.cnpj ? ` (CNPJ ${r.asset.cnpj})` : ''}</td><td className="num">{money(r.fiiIncome, { always: true })}</td></tr>
+                      <tr key={'f' + r.asset.id}><td>99</td><td>{t('Rendimentos de FII', 'REIT (FII) income')} — {r.asset.ticker}{r.asset.cnpj ? ` (CNPJ ${r.asset.cnpj})` : ''}</td><td className="num">{money(r.fiiIncome)}</td></tr>
                     ))}
                   </tbody>
                 </table>
@@ -334,7 +334,7 @@ export function ImpostoRenda({ openAsset }: { openAsset: (id: string) => void })
                   <thead><tr><th>{t('Linha', 'Line')}</th><th>{t('Descrição', 'Description')}</th><th className="num">{t('Valor líquido', 'Net amount')}</th></tr></thead>
                   <tbody>
                     {income.filter((r) => r.jcp).map((r) => (
-                      <tr key={'j' + r.asset.id}><td>10</td><td>{t('Juros sobre capital próprio', 'Interest on equity (JCP)')} — {r.asset.ticker}{r.asset.cnpj ? ` (CNPJ ${r.asset.cnpj})` : ''}</td><td className="num">{money(r.jcp, { always: true })}</td></tr>
+                      <tr key={'j' + r.asset.id}><td>10</td><td>{t('Juros sobre capital próprio', 'Interest on equity (JCP)')} — {r.asset.ticker}{r.asset.cnpj ? ` (CNPJ ${r.asset.cnpj})` : ''}</td><td className="num">{money(r.jcp)}</td></tr>
                     ))}
                     {!income.some((r) => r.jcp) && <tr><td colSpan={3} className="muted">{t(`Nenhum JCP lançado em ${year}.`, `No JCP in ${year}.`)}</td></tr>}
                   </tbody>

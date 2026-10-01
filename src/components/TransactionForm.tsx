@@ -29,7 +29,7 @@ const INSTITUTIONS = [
 // Renda fixa types: each one knows its yield options, defaults and whether it matures.
 
 type FType = 'CDB' | 'LCI' | 'LCA' | 'TESOURO_SELIC' | 'TESOURO_IPCA' | 'TESOURO_PRE' | 'CONTA' | 'POUPANCA' | 'FUNDO' | 'OUTRO';
-const FTYPES: FType[] = ['CDB', 'LCI', 'LCA', 'CONTA', 'TESOURO_SELIC', 'TESOURO_IPCA', 'TESOURO_PRE', 'POUPANCA', 'FUNDO', 'OUTRO'];
+const FTYPES: FType[] = ['CDB', 'LCI', 'LCA', 'TESOURO_SELIC', 'TESOURO_IPCA', 'TESOURO_PRE', 'FUNDO', 'OUTRO'];
 const FTYPE: Record<FType, { kind: FixedKind; indexers: Indexer[]; rate: number; label: () => string; hint: () => string }> = {
   CDB: { kind: 'CDB', indexers: ['CDI', 'IPCA', 'PRE'], rate: 100, label: () => 'CDB', hint: () => t('Emitido por banco', 'Issued by a bank') },
   LCI: { kind: 'LCI', indexers: ['CDI', 'IPCA', 'PRE'], rate: 92, label: () => 'LCI', hint: () => t('Isenta de IR', 'Tax-free') },
@@ -616,18 +616,15 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
               />
             ) : (
               <>
-                {fixedHoldings.length > 0 && !editing && (
-                  <div className="field">
-                    <span>{t('Colocar dinheiro em', 'Put money into')}</span>
-                    <div className="chips">
-                      <button type="button" className={'chip-btn' + (!existing ? ' on' : '')} onClick={() => setTicker('')}>+ {t('Novo investimento', 'New investment')}</button>
-                      {fixedHoldings.map((a) => (
-                        <button type="button" key={a.id} className={'chip-btn' + (existing?.id === a.id ? ' on' : '')} onClick={() => setTicker(a.ticker)}>{a.ticker}</button>
-                      ))}
+                {existing && (
+                  <div className="picked">
+                    <Logo symbol={existing.ticker} market={marketOf(existing.cls, 'BRL')} cls={existing.cls} size={40} />
+                    <div className="picked-info">
+                      <b>{existing.ticker}</b>
+                      <span>{fixedSub(existing)}</span>
                     </div>
                   </div>
                 )}
-
                 {!existing && (
                   <>
                     <div className="field">

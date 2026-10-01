@@ -218,13 +218,13 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
         </button>
         <button className={'tile reveal' + (nextDarf ? ' alert' : '')} style={{ ['--i' as string]: 4 }} onClick={() => open('ir')}>
           <span className="t-label"><Icon name="receipt" size={14} /> {t(`IR sobre vendas de ${year}`, `Tax on ${year} sales`)}</span>
-          <span className="t-value"><CountUp value={yearTax} format={(v) => money(v, { always: true })} /></span>
+          <span className="t-value"><CountUp value={yearTax} format={(v) => money(v)} /></span>
           <span className="t-sub">
             {nextDarf
-              ? t(`DARF de ${money(nextDarf.darf, { always: true })} vence ${fmtDate(nextDarf.due)}`, `DARF of ${money(nextDarf.darf, { always: true })} due ${fmtDate(nextDarf.due)}`)
+              ? t(`DARF de ${money(nextDarf.darf)} vence ${fmtDate(nextDarf.due)}`, `DARF of ${money(nextDarf.darf)} due ${fmtDate(nextDarf.due)}`)
               : tax.exterior.tax > 0.005
                 ? yearTax - tax.exterior.tax > 0.005
-                  ? t(`${money(tax.exterior.tax, { always: true })} na declaração de ${year + 1} · resto via DARF →`, `${money(tax.exterior.tax, { always: true })} with your ${year + 1} return · rest via DARF →`)
+                  ? t(`${money(tax.exterior.tax)} na declaração de ${year + 1} · resto via DARF →`, `${money(tax.exterior.tax)} with your ${year + 1} return · rest via DARF →`)
                   : t(`A pagar na declaração de ${year + 1} →`, `Due with your ${year + 1} return →`)
                 : yearTax > 0.005
                   ? t('Pago mês a mês via DARF →', 'Paid monthly via DARF →')
@@ -248,6 +248,9 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
             ))}
           </div>
         </div>
+        {!positions.length ? (
+          <div className="card empty">{t('Nada investido no momento — tudo foi vendido ou resgatado.', 'Nothing invested right now — everything was sold or redeemed.')}</div>
+        ) : (
         <div className="alloc">
           <Donut
             slices={slices}
@@ -282,6 +285,7 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
             })}
           </div>
         </div>
+        )}
       </section>
 
       <section className="section">
