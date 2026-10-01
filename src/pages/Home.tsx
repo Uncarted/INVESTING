@@ -100,8 +100,7 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
     .map((m) => ({ ...m, due: darfDue(m.month) }))
     .find((m) => m.due >= tdy);
 
-  const foreign = positions.filter((p) => p.currency !== 'BRL');
-  const usdValue = foreign.filter((p) => p.currency === 'USD').reduce((s, p) => s + p.valueNative, 0);
+  const yearTax = tax.totals.darf + tax.months.reduce((s, m) => s + m.cryptoTax, 0) + tax.exterior.tax;
   const isLive = Object.values(live.status).some((s) => s === 'live' || s === 'polling');
   const needsKey = live.status.us === 'needs-key' || live.status.b3 === 'needs-key';
 
@@ -188,11 +187,6 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
           <div className="fx-row">
             <FxQuote sym="US$" now={settings.fx.USD} prev={live.fx?.USDprev} />
             <FxQuote sym="€" now={settings.fx.EUR} prev={live.fx?.EURprev} />
-            {usdValue > 0 && (
-              <button className="fx-hold" onClick={() => setView('moeda')} title={t('Ver por moeda', 'View by currency')}>
-                <span className="dot" style={{ background: 'var(--c-ACAO)' }} /> {fmtCurrency(usdValue, 'USD')} {t('em dólar', 'in dollars')}
-              </button>
-            )}
           </div>
           {needsKey && (
             <button className="connect-hint" onClick={() => open('config')}>
@@ -224,8 +218,14 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
         </button>
         <button className={'tile reveal' + (nextDarf ? ' alert' : '')} style={{ ['--i' as string]: 4 }} onClick={() => open('ir')}>
           <span className="t-label"><Icon name="receipt" size={14} /> {t('Imposto de renda', 'Income tax')}</span>
-          <span className="t-value">{nextDarf ? money(nextDarf.darf, { always: true }) : t('Nada a pagar', 'Nothing to pay')}</span>
-          <span className="t-sub">{nextDarf ? `DARF 6015 ${t('vence', 'due')} ${fmtDate(nextDarf.due)}` : t(`Relatório do IR ${year - 1} pronto →`, `${year - 1} tax report ready →`)}</span>
+          <span className="t-value">{nextDarf ? money(nextDarf.darf, { always: true }) : yearTax > 0.005 ? money(yearTax, { always: true }) : t('Nada a pagar', 'Nothing to pay')}</span>
+          <span className="t-sub">
+            {nextDarf
+              ? `DARF 6015 ${t('vence', 'due')} ${fmtDate(nextDarf.due)}`
+              : yearTax > 0.005
+                ? t(`estimado sobre vendas de ${year} · ver detalhes →`, `estimated on ${year} sales · details →`)
+                : t(`Relatório do IR ${year - 1} pronto →`, `${year - 1} tax report ready →`)}
+          </span>
         </button>
         <button className="tile reveal" style={{ ['--i' as string]: 5 }} onClick={() => open('lancamentos')}>
           <span className="t-label"><Icon name="chart" size={14} /> {t('Lucro com vendas em', 'Profit from sales in')} {year}</span>
@@ -367,24 +367,61 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
   );
 }
 
-/** A short, friendly line that depends on the time of day and how the day is going. */
+/** Picked once per visit, so the line changes each time you come in but not while you look at it. */
+const SEED = Math.random();
+
+/** A short, playful line that depends on the time of day and how the portfolio is doing today. */
 function greeting(name: string, dayChange: number, total: number) {
   const h = new Date().getHours();
   const hello = h < 5 ? t('Boa noite', 'Good evening') : h < 12 ? t('Bom dia', 'Good morning') : h < 18 ? t('Boa tarde', 'Good afternoon') : t('Boa noite', 'Good evening');
   const who = name ? <b>{name}</b> : null;
-  const dayPct = total ? dayChange / total : 0;
-  if (dayPct > 0.004)
-    return <>{hello}{who && <>, {who}</>}. {t('Dia bom na carteira hoje', 'Good day for your portfolio')} 📈</>;
-  if (dayPct < -0.008)
-    return <>{hello}{who && <>, {who}</>}. {t('Mercado agitado hoje — foco no longo prazo', 'Choppy market today — eyes on the long run')}.</>;
-  // Stable per day, so the message doesn't change on every render.
-  const lines = [
-    <>{hello}{who && <>, {who}</>}.</>,
-    <>{t('Que bom te ver de novo', 'Great to see you again')}{who && <>, {who}</>}.</>,
-    <>{t('Olá de novo', 'Welcome back')}{who && <>, {who}</>}. {t('Tudo em ordem por aqui', 'Everything is in order')}.</>,
-    <>{hello}{who && <>, {who}</>}. {t('Vamos ver como está sua carteira', "Let's see how your portfolio is doing")}.</>,
-  ];
-  return lines[new Date().getDate() % lines.length];
+  const hi = <>{hello}{who && <>, {who}</>}.</>;
+  const nm = who ? <>, {who}</> : null;
+  const p = total ? dayChange / (total - dayChange || total) : 0;
+
+  const lines: React.ReactNode[] =
+    dayChange === 0
+      ? [
+          <>{hi} {t('Mercado quieto por enquanto.', 'Markets are quiet for now.')}</>,
+          <>{t('Que bom te ver de novo', 'Good to see you again')}{nm}. {t('Tudo em ordem por aqui.', 'Everything is in order.')}</>,
+          <>{hi} {t('Seu dinheiro está descansando. Você também deveria.', 'Your money is resting. You should too.')}</>,
+          <>{t('Olá de novo', 'Welcome back')}{nm}. {t('Nada pegando fogo hoje.', 'Nothing on fire today.')} 🧯</>,
+        ]
+      : p >= 0.015
+        ? [
+            <>{hi} {t('Dia de ouro na carteira', 'Golden day for the portfolio')} 🚀</>,
+            <>{t('Olha só quem está ficando rico', "Look who's getting rich")}{nm}. 💸</>,
+            <>{hi} {t('Hoje o mercado trabalhou pra você', 'Today the market worked for you')} 😎</>,
+            <>{t('Pode pedir a sobremesa', 'Go ahead, order dessert')}{nm}. {t('Hoje tá verde.', "It's green today.")} 🍰</>,
+          ]
+        : p > 0.003
+          ? [
+              <>{hi} {t('Dia bom na carteira', 'Good day for your portfolio')} 📈</>,
+              <>{hi} {t('Tudo subindo, devagar e sempre.', 'Slow and steady, all up.')} 🐢</>,
+              <>{t('Bom te ver', 'Nice to see you')}{nm}. {t('O verde combina com você.', 'Green looks good on you.')}</>,
+              <>{hi} {t('Seus investimentos acordaram de bom humor.', 'Your investments woke up in a good mood.')} ☀️</>,
+            ]
+          : p >= -0.003
+            ? [
+                <>{hi} {t('Dia morno — nem frio, nem quente.', 'Lukewarm day — nothing to see.')}</>,
+                <>{hi} {t('O mercado está de lado. Você não precisa ficar.', "The market's going sideways. You don't have to.")}</>,
+                <>{t('Olá de novo', 'Welcome back')}{nm}. {t('Tudo estável, quase entediante.', 'All stable, almost boring.')} 😴</>,
+                <>{hi} {t('Sem emoções fortes hoje.', 'No drama today.')}</>,
+              ]
+            : p > -0.015
+              ? [
+                  <>{hi} {t('Um dia meio vermelhinho. Nada que um café não resolva.', 'A bit red today. Nothing coffee can\'t fix.')} ☕</>,
+                  <>{hi} {t('Pequena queda — o longo prazo agradece a paciência.', 'Small dip — the long run thanks you for your patience.')}</>,
+                  <>{t('Respira', 'Breathe')}{nm}. {t('É só uma oscilação.', "It's just a wobble.")} 🧘</>,
+                  <>{hi} {t('Hoje o mercado acordou de mau humor.', 'The market woke up grumpy today.')}</>,
+                ]
+              : [
+                  <>{hi} {t('Dia feio. Talvez não abra o app de novo hoje.', "Ugly day. Maybe don't open the app again today.")} 🙈</>,
+                  <>{t('Coragem', 'Hang in there')}{nm}. {t('Promoção na bolsa: tudo mais barato.', 'Stocks are on sale today.')} 🏷️</>,
+                  <>{hi} {t('O mercado resolveu testar seus nervos.', 'The market decided to test your nerves.')} 🎢</>,
+                  <>{t('Fecha o app e vai dar uma volta', 'Close the app and go for a walk')}{nm}. {t('Amanhã é outro dia.', 'Tomorrow is another day.')} 🌧️</>,
+                ];
+  return lines[Math.floor(SEED * lines.length)];
 }
 
 const toneOf = (v: number) => (v > 0.004 ? 'pos' : v < -0.004 ? 'neg' : '');

@@ -245,8 +245,6 @@ function AssetEditor({ asset, onDone, onDeleted }: { asset: Asset; onDone: () =>
             {CLASS_ORDER.map((c) => <option key={c} value={c}>{CLASS_LABEL[c]}</option>)}
           </select>
         </label>
-        <label className="field"><span>{tr('Nome / razão social', 'Name / company name')}</span><input className="input" value={a.name ?? ''} onChange={(e) => set('name', e.target.value || undefined)} /></label>
-        <label className="field"><span>{tr('CNPJ (para o IR)', 'CNPJ (for taxes)')}</span><input className="input" value={a.cnpj ?? ''} onChange={(e) => set('cnpj', e.target.value || undefined)} placeholder="00.000.000/0001-00" /></label>
         <label className="field"><span>{tr('Instituição', 'Institution')}</span><input className="input" list="institutions" value={a.institution ?? ''} onChange={(e) => set('institution', e.target.value || undefined)} /></label>
         {a.cls === 'RENDA_FIXA' && (
           <>
