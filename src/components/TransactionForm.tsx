@@ -16,7 +16,7 @@ import { estimateSaleTax, type SaleTaxEstimate } from '../lib/tax';
 import { FUND_CLASS, prettyFund, searchFunds, type Fund } from '../lib/funds';
 import { getLang } from '../lib/i18n';
 
-type Mode = 'market' | 'fixed' | 'income' | 'event';
+type Mode = 'market' | 'fixed' | 'income' | 'event' | 'cash';
 
 const INSTITUTIONS = [
   'Ágora', 'Avenue', 'Banco do Brasil', 'Banco Pan', 'Binance', 'Bradesco', 'BTG Pactual', 'C6 Bank', 'Caixa', 'Charles Schwab',
@@ -94,6 +94,7 @@ interface Pick {
 function modeOf(tx: Transaction, asset?: Asset): Mode {
   if (tx.type === 'DIVIDEND' || tx.type === 'JCP' || tx.type === 'INCOME') return 'income';
   if (tx.type === 'SPLIT' || tx.type === 'BONUS') return 'event';
+  if (asset?.cls === 'CAIXA') return 'cash';
   return asset && !isMarketClass(asset.cls) ? 'fixed' : 'market';
 }
 
@@ -126,7 +127,10 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
   const live = useLive();
   const editing = init?.tx;
   const initAsset = init?.asset ?? (editing ? data.assets.find((a) => a.id === editing.assetId) : undefined);
-  const [mode, setMode] = useState<Mode>(init?.mode ?? (editing ? modeOf(editing, initAsset) : initAsset && !isMarketClass(initAsset.cls) ? 'fixed' : 'market'));
+  const [mode, setMode] = useState<Mode>(init?.mode ?? (editing ? modeOf(editing, initAsset) : initAsset?.cls === 'CAIXA' ? 'cash' : initAsset && !isMarketClass(initAsset.cls) ? 'fixed' : 'market'));
+  const [cashCur, setCashCur] = useState<Currency>(initAsset?.cls === 'CAIXA' ? currencyOf(initAsset) : 'BRL');
+  const [cashOp, setCashOp] = useState<'balance' | 'in' | 'out'>(editing ? (editing.type === 'SELL' ? 'out' : 'in') : 'balance');
+  const [cashAmount, setCashAmount] = useState(editing && initAsset?.cls === 'CAIXA' ? str(editing.quantity) : '');
 
   // shared
   const [ticker, setTicker] = useState(initAsset?.ticker ?? '');
@@ -180,7 +184,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
   const incomeAsset = mode !== 'market' ? existing : undefined;
 
   const currency: Currency =
-    mode === 'fixed' ? 'BRL' : mode === 'market' ? resolved?.currency ?? 'BRL' : incomeAsset ? currencyOf(incomeAsset) : 'BRL';
+    mode === 'cash' ? cashCur : mode === 'fixed' ? 'BRL' : mode === 'market' ? resolved?.currency ?? 'BRL' : incomeAsset ? currencyOf(incomeAsset) : 'BRL';
   const foreign = currency !== 'BRL';
   const sym = CURRENCY_SYMBOL[currency];
   const wholeShares = resolved?.market === 'B3';
@@ -276,8 +280,36 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
     }
   }
 
+  function saveCash() {
+    const v = parseNumber(cashAmount);
+    if (!(v >= 0) || (cashOp !== 'balance' && !(v > 0))) return setError(t('Informe o valor.', 'Enter the amount.'));
+    if (!cashAsset && !institution) return setError(t('Escolha o banco ou corretora.', 'Choose the bank or broker.'));
+    if (foreign && !(fx > 0)) return setError(t('Informe a cotação da moeda no dia.', "Enter that day's exchange rate."));
+    const diff = cashOp === 'balance' ? Math.round((v - cashHave) * 100) / 100 : cashOp === 'in' ? v : -v;
+    if (Math.abs(diff) < 0.005) {
+      toast(t('O saldo já está assim', 'The balance is already that'));
+      return onClose();
+    }
+    const created = cashAsset ? undefined : newAsset({ ticker: cashTicker, cls: 'CAIXA', currency: cashCur, institution: institution || undefined, currentPrice: 1 });
+    const asset = cashAsset ?? created!;
+    const tx = {
+      assetId: asset.id, type: (diff > 0 ? 'BUY' : 'SELL') as TxType, date, quantity: Math.abs(diff), price: 1, fees: 0,
+      fxRate: foreign ? fx : undefined, institution: institution || asset.institution, notes: notes || (cashOp === 'balance' ? t(`Saldo informado: ${fmtCurrency(v, cashCur, { always: true })}`, `Balance entered: ${fmtCurrency(v, cashCur, { always: true })}`) : undefined),
+      source: editing?.source ?? ('manual' as const),
+    };
+    if (editing) {
+      actions.updateTransaction(editing.id, tx);
+      toast(t('Lançamento atualizado', 'Transaction updated'));
+    } else {
+      actions.addTransactions([tx], created ? [created] : []);
+      toast(t(`${asset.ticker}: saldo ${fmtCurrency(cashHave + diff, cashCur, { always: true })}`, `${asset.ticker}: balance ${fmtCurrency(cashHave + diff, cashCur, { always: true })}`));
+    }
+    onClose();
+  }
+
   function save(again: boolean) {
     setError('');
+    if (mode === 'cash') return saveCash();
     const tk = mode === 'fixed' ? (existing ? existing.ticker : fixedName) : mode === 'market' ? pick?.symbol ?? '' : normalizeTicker(ticker);
     if (mode === 'fixed' && side === 'SELL' && !existing) return setError(t('Escolha qual investimento você resgatou.', 'Choose which investment you redeemed.'));
     if (mode === 'fixed' && !existing && (fType === 'FUNDO' || fType === 'OUTRO') && !customName.trim()) return setError(t('Dê um nome ao investimento.', 'Give the investment a name.'));
@@ -380,6 +412,19 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
 
   const selling = mode === 'market' && side === 'SELL';
 
+  // ----- Conta: money sitting in a bank/broker account, in reais, dollars or euros -----
+  const CASH_NAME: Record<Currency, string> = { BRL: t('Reais', 'Reais'), USD: t('Dólar', 'Dollars'), EUR: 'Euro' };
+  const cashTicker = `${CASH_NAME[cashCur]} ${institution || ''}`.trim();
+  const cashAsset =
+    initAsset?.cls === 'CAIXA'
+      ? initAsset
+      : data.assets.find((a) => a.cls === 'CAIXA' && currencyOf(a) === cashCur && (a.institution ?? '').toLowerCase() === institution.toLowerCase() && !!institution);
+  const cashHave = useMemo(() => {
+    if (!cashAsset) return 0;
+    const list = data.transactions.filter((x) => x.assetId === cashAsset.id && x.id !== editing?.id);
+    return runMarket(cashAsset, list, date, data.settings).quantity;
+  }, [cashAsset, data.transactions, data.settings, date, editing?.id]);
+
   // ----- Renda fixa: everything is picked; the name is built from the choices -----
   const fixedPositions = useMemo(() => computePositions(data.assets.filter((a) => !isMarketClass(a.cls)), data.transactions, data.settings, today()), [data]);
   const fixedHoldings = fixedPositions.filter((p) => !p.closed || p.asset.id === initAsset?.id).map((p) => p.asset);
@@ -418,7 +463,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
         <>
           {error && <span className="neg small" style={{ marginRight: 'auto', alignSelf: 'center' }}>{error}</span>}
           <button className="btn" onClick={onClose}>{t('Cancelar', 'Cancel')}</button>
-          {!editing && !selling && <button className="btn" onClick={() => save(true)}>{t('Salvar e adicionar outro', 'Save and add another')}</button>}
+          {!editing && !selling && mode !== 'cash' && <button className="btn" onClick={() => save(true)}>{t('Salvar e adicionar outro', 'Save and add another')}</button>}
           <button className="btn primary" onClick={() => save(false)}>{selling ? t('Vender', 'Sell') : t('Salvar', 'Save')}</button>
         </>
       }
@@ -431,6 +476,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
               ['fixed', t('Renda fixa', 'Fixed income'), t('CDB, LCI, Tesouro, fundos', 'CDB, LCI, Tesouro, funds'), 'wallet'],
               ['income', t('Provento', 'Dividend'), t('Dividendo, JCP, rendimento', 'Dividend, JCP, income'), 'coins'],
               ['event', t('Evento', 'Event'), t('Desdobro, bonificação', 'Split, bonus shares'), 'refresh'],
+              ['cash', t('Conta', 'Cash'), t('Dinheiro em R$, US$ ou €', 'Money in R$, US$ or €'), 'cash'],
             ] as [Mode, string, string, string][]).map(([m, l, d, ic]) => (
               <button type="button" key={m} className={'type-card' + (mode === m ? ' on' : '')} onClick={() => setMode(m)}>
                 <Icon name={ic} size={18} />
@@ -726,6 +772,46 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
               )}
             </div>
           </>
+        )}
+
+        {mode === 'cash' && (
+          <div className="stack" style={{ gap: 14 }}>
+            {initAsset?.cls !== 'CAIXA' && (
+              <div className="seg">
+                {(['BRL', 'USD', 'EUR'] as Currency[]).map((c) => (
+                  <button type="button" key={c} className={cashCur === c ? 'on' : ''} onClick={() => setCashCur(c)}>
+                    {c === 'BRL' ? t('R$ Reais', 'R$ Reais') : c === 'USD' ? t('US$ Dólar', 'US$ Dollars') : '€ Euro'}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="form-grid">
+              <InstitutionField value={institution} onChange={setInstitution} options={institutions} label={t('Banco / corretora', 'Bank / broker')} />
+              <label className="field">
+                <span>{t('Data', 'Date')}</span>
+                <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              </label>
+              <div className="field full">
+                <span>{t('O que você quer registrar?', 'What do you want to record?')}</span>
+                <div className="seg">
+                  {!editing && <button type="button" className={cashOp === 'balance' ? 'on' : ''} onClick={() => setCashOp('balance')}>{t('Saldo de hoje', 'Current balance')}</button>}
+                  <button type="button" className={cashOp === 'in' ? 'on' : ''} onClick={() => setCashOp('in')}>{t('Entrada', 'Money in')}</button>
+                  <button type="button" className={cashOp === 'out' ? 'on' : ''} onClick={() => setCashOp('out')}>{t('Saída', 'Money out')}</button>
+                </div>
+              </div>
+              <label className="field">
+                <span>{cashOp === 'balance' ? t('Saldo na conta', 'Account balance') : t('Valor', 'Amount')} ({sym})</span>
+                <input className="input num" inputMode="decimal" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} placeholder={t('0,00', '0.00')} autoFocus={!!initAsset} />
+                {cashAsset && <span className="hint">{t('Hoje o Wallet tem', 'Wallet has')} {fmtCurrency(cashHave, cashCur, { always: true })} {t('em', 'in')} {cashAsset.ticker}</span>}
+              </label>
+              {foreign && (
+                <label className="field">
+                  <span>{CURRENCY_LABEL[currency]} {t('no dia', 'on that day')} (R$)</span>
+                  <input className="input num" inputMode="decimal" value={fxRate} onChange={(e) => { fxTouched.current = true; setFxRate(e.target.value); }} />
+                </label>
+              )}
+            </div>
+          </div>
         )}
 
         {mode === 'income' && (

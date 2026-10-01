@@ -3,6 +3,7 @@ const PATHS: Record<string, string> = {
   wallet: 'M3 7a2 2 0 0 1 2-2h13v4M3 7v11a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2zm13 7h.01',
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
   coins: 'M9 14a6 6 0 1 0 0-12 6 6 0 0 0 0 12zm9.1-3.6A6 6 0 1 1 10.4 18M7 6h1v4m8.7 3.9.7.7-2.8 2.8',
+  cash: 'M3 7h18v10H3zm9 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM6 10v.01M18 14v.01',
   receipt: 'M5 3v18l3-2 3 2 3-2 3 2V3l-3 2-3-2-3 2zm4 6h6m-6 4h6',
   upload: 'M12 16V4m0 0-4 4m4-4 4 4M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3',
   download: 'M12 4v12m0 0-4-4m4 4 4-4M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3',

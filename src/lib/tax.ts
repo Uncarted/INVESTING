@@ -190,7 +190,7 @@ function irCode(a: Asset): { group: string; code: string; label: string } {
     case 'ACAO':
       return { group: '03', code: '01', label: 'Ações (inclusive listadas em bolsa)' };
     case 'CAIXA':
-      return { group: '06', code: '01', label: 'Depósito em conta corrente ou conta pagamento — exterior' };
+      return { group: '06', code: '01', label: a.currency && a.currency !== 'BRL' ? 'Depósito em conta corrente ou conta pagamento — exterior' : 'Depósito em conta corrente ou conta pagamento' };
     case 'EXTERIOR':
       return { group: '03', code: '01', label: 'Ações — localização: exterior' };
     case 'FII':
@@ -231,8 +231,10 @@ function describe(a: Asset, p: Position): string {
   const cnpj = a.cnpj ? ` CNPJ ${a.cnpj}.` : '';
   const name = a.name ? ` - ${a.name}` : '';
   if (a.cls === 'CAIXA') {
-    const usd = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'USD' }).format(p.quantity);
-    return `Saldo de ${usd} em conta${inst ? inst.replace(', custodiado(a) em', ' na') : ''} no exterior. Custo em reais ${ptMoney(p.cost)}.`;
+    const cur = a.currency ?? 'BRL';
+    const bal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: cur }).format(p.quantity);
+    const where = inst ? inst.replace(', custodiado(a) em', ' na') : '';
+    return cur === 'BRL' ? `Saldo em conta${where}.` : `Saldo de ${bal} em conta${where} no exterior. Custo em reais ${ptMoney(p.cost)}.`;
   }
   if (isMarketClass(a.cls)) {
     const unit =

@@ -23,7 +23,7 @@ export const CLASS_LABEL: Record<AssetClass, string> = {
   FUNDO: 'Fundos',
   CRIPTO: 'Cripto',
   EXTERIOR: 'Ações EUA',
-  CAIXA: 'Dólar em conta',
+  CAIXA: 'Dinheiro em conta',
   OUTRO: 'Outros',
 };
 

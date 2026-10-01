@@ -455,7 +455,7 @@ table.table { width: 100%; border-collapse: collapse; }
 .tabs button { border: 0; background: none; padding: 8px 16px; cursor: pointer; color: var(--text-2); font-weight: 550; border-radius: 999px; white-space: nowrap; }
 .tabs button.on { background: var(--text); color: var(--bg); }
 .kbd { font-size: 11px; padding: 1px 6px; border-radius: 6px; background: rgba(0, 0, 0, 0.12); }
-.type-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.type-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
 .type-card {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px; border-radius: 16px; cursor: pointer; text-align: left;
   border: 1px solid var(--border-strong); background: transparent; color: var(--text-2); transition: 0.15s;

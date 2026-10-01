@@ -76,7 +76,7 @@ export function AssetDrawer({ assetId, onClose, onAdd }: { assetId: string; onCl
               <Stat label={tr('Proventos recebidos', 'Dividends received')} value={money(pos.income)} />
               {pos.realized !== 0 && <Stat label={tr('Lucro/prejuízo realizado', 'Realized gain/loss')} value={<Delta value={pos.realized}>{money(pos.realized)}</Delta>} />}
             </div>
-            {market && pos.quantity > 0 && (
+            {market && asset.cls !== 'CAIXA' && pos.quantity > 0 && (
               <div className="sell-row">
                 <SellAllHint assetId={asset.id} quantity={pos.quantity} price={asset.currentPrice} settings={settings} />
                 <button className="btn sm sell-btn" onClick={() => onAdd({ asset, mode: 'market', side: 'SELL' })}>

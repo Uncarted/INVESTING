@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { actions, useData } from '../lib/store';
 import { allSales, computePositions, type Position } from '../lib/portfolio';
 import { computeTaxYear } from '../lib/tax';
-import { CLASS_LABEL, CLASS_ORDER, CURRENCY_LABEL, INCOME_TYPES, isMarketClass, type AssetClass } from '../lib/types';
+import { CLASS_LABEL, CLASS_ORDER, CURRENCY_LABEL, CURRENCY_SYMBOL, INCOME_TYPES, isMarketClass, type AssetClass } from '../lib/types';
 import { fmtCurrency, fmtDate, money, percent, qty, signedPercent, today, toISODate } from '../lib/format';
 import { useLive, withLive } from '../lib/live';
 import { PortfolioChart } from '../components/PortfolioChart';
@@ -331,7 +331,7 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
             const unit = p.asset.cls === 'CRIPTO' || p.asset.cls === 'CAIXA' ? '' : p.asset.cls === 'ACAO' || p.asset.cls === 'EXTERIOR' ? t(' ações', ' shares') : t(' cotas', ' units');
             return (
               <div key={p.asset.id} className="h-row reveal" style={{ ['--i' as string]: Math.min(i, 14) }} onClick={() => openAsset(p.asset.id)}>
-                <Logo symbol={p.asset.cls === 'CAIXA' ? 'US$' : p.asset.ticker} market={marketOf(p.asset.cls, cur)} cls={p.asset.cls} />
+                <Logo symbol={p.asset.cls === 'CAIXA' ? CURRENCY_SYMBOL[cur] : p.asset.ticker} market={marketOf(p.asset.cls, cur)} cls={p.asset.cls} />
                 <span className="h-name">
                   <b>
                     {p.asset.ticker}
@@ -341,10 +341,14 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
                 </span>
                 <span className="h-cell hide-md">
                   {p.asset.cls === 'CAIXA' ? (
-                    <>
-                      <span className="price">{money(settings.fx[cur as 'USD' | 'EUR'] ?? 0, { always: true })}</span>
-                      <small>{t('dólar hoje', 'dollar today')}</small>
-                    </>
+                    cur === 'BRL' ? (
+                      <span className="muted">{t('em conta', 'in account')}</span>
+                    ) : (
+                      <>
+                        <span className="price">{money(settings.fx[cur as 'USD' | 'EUR'] ?? 0, { always: true })}</span>
+                        <small>{cur === 'USD' ? t('dólar hoje', 'dollar today') : t('euro hoje', 'euro today')}</small>
+                      </>
+                    )
                   ) : m ? (
                     p.asset.currentPrice ? (
                       <>
@@ -359,8 +363,8 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
                   )}
                 </span>
                 <span className="h-cell hide-md">
-                  {p.asset.cls === 'CAIXA' ? money(p.avgPrice, { always: true }) : m ? fmtCurrency(p.avgPriceNative, cur, { always: true }) : money(p.cost)}
-                  <small>{p.asset.cls === 'CAIXA' ? t('dólar médio', 'avg. dollar') : m ? `${t('custo', 'cost')} ${money(p.cost)}` : t('aplicado', 'invested')}</small>
+                  {p.asset.cls === 'CAIXA' ? (cur === 'BRL' ? money(p.cost) : money(p.avgPrice, { always: true })) : m ? fmtCurrency(p.avgPriceNative, cur, { always: true }) : money(p.cost)}
+                  <small>{p.asset.cls === 'CAIXA' ? (cur === 'BRL' ? t('depositado', 'deposited') : cur === 'USD' ? t('dólar médio', 'avg. dollar') : t('euro médio', 'avg. euro')) : m ? `${t('custo', 'cost')} ${money(p.cost)}` : t('aplicado', 'invested')}</small>
                 </span>
                 <span className="h-cell">
                   <Flash value={p.value} className="h-value">{money(p.value)}</Flash>
