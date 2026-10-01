@@ -252,3 +252,31 @@ describe('importar extrato do banco', () => {
     expect(p.rows.map((r) => [r.tx.type, r.tx.date, r.tx.price])).toEqual([['BUY', '2026-01-10', 500]]);
   });
 });
+
+describe('extrato de custódia (PDF)', () => {
+  const lines = [
+    'Custódia em: 30/09/2026',
+    ' | NU PAGAMENTOS S.A.',
+    ' | Custódia em Caixinhas',
+    ' | Caixinha "Viagem"',
+    ' | Tipo de Ativo | Emissor | Saldo Bruto (R$) | IR (R$) | IOF (R$) | Saldo Líquido (R$) | Disponível em',
+    ' | RDB Resgate Imediato | Nubank | 1.234,56 | 10,00 | 0,00 | 1.224,56 | No mesmo dia',
+    ' | Custódia em Renda Fixa',
+    ' | CDB Pós-fixado',
+    'Nubank | 30/11/2027 | 120% CDI | 2.000,00 | 15/01/2026 | 2.150,00 | 20,00 | 0,00 | 2.130,00 | No vencimento',
+  ];
+  it('cria caixinhas e CDBs com o saldo do dia', async () => {
+    const { buildCustodyPreview, materialize } = await import('./importers');
+    const p = buildCustodyPreview(lines, { assets: [], transactions: [] });
+    expect(p.rows.map((r) => [r.ticker, r.tx.date, r.tx.price, r.balance?.value])).toEqual([
+      ['Caixinha Viagem', '2026-09-30', 1234.56, 1234.56],
+      ['CDB Nubank 120% CDI 2027', '2026-01-15', 2000, 2150],
+    ]);
+    expect(p.rows[1].fixed).toMatchObject({ kind: 'CDB', indexer: 'CDI', rate: 120, maturity: '2027-11-30' });
+    const m = materialize(p.rows, []);
+    // Importing again later only updates balances.
+    const again = buildCustodyPreview(lines, { assets: m.created, transactions: [] });
+    expect(again.rows.every((r) => r.balanceOnly)).toBe(true);
+    expect(materialize(again.rows, m.created).txs).toHaveLength(0);
+  });
+});

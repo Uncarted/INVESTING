@@ -211,7 +211,7 @@ export function runValue(asset: Asset, txs: Transaction[], s: Settings, asOf: st
   if (last && !closed) value *= growth(rate, last, asOf);
 
   let estimate = rate > 0;
-  if (!closed && asset.manualValue !== undefined && asset.manualValueDate) {
+  if (!closed && asset.manualValue !== undefined && asset.manualValueDate && asOf >= asset.manualValueDate) {
     // Start from the informed balance and apply only flows after it.
     let v = asset.manualValue;
     let from = asset.manualValueDate;

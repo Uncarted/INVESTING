@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
 import { actions, getData, normalize } from '../lib/store';
-import { bankName, buildPreview, downloadTemplate, FORMAT_LABEL, materialize, parseOfx, readSheet, type ImportPreview } from '../lib/importers';
+import { bankName, buildCustodyPreview, buildPreview, readPdfLines, downloadTemplate, FORMAT_LABEL, materialize, parseOfx, readSheet, type ImportPreview } from '../lib/importers';
 import { exportBackup } from '../lib/exporters';
-import { TX_LABEL } from '../lib/types';
+import { TX_LABEL, isMarketClass } from '../lib/types';
 import { fmtCurrency, fmtDate, qty } from '../lib/format';
 import { ClassChip, toast } from '../components/ui';
 import { Icon } from '../components/Icon';
@@ -31,7 +31,10 @@ export function Importar() {
     if (!file) return;
     try {
       let p: ImportPreview;
-      if (/\.ofx$/i.test(file.name)) {
+      if (/\.pdf$/i.test(file.name)) {
+        setBusy(t('Lendo o PDF…', 'Reading the PDF…'));
+        p = buildCustodyPreview(await readPdfLines(file).finally(() => setBusy('')), getData());
+      } else if (/\.ofx$/i.test(file.name)) {
         const { rows, bank } = parseOfx(await file.text());
         p = buildPreview(rows, getData(), { bank: bank ?? guessBank(file.name) });
       } else {
@@ -67,8 +70,10 @@ export function Importar() {
         if (v) r.tx = { ...r.tx, fxRate: v };
       }
     }
-    const { created, txs } = materialize(chosen, getData().assets);
-    actions.addTransactions(txs, created);
+    const { created, txs, balances } = materialize(chosen, getData().assets);
+    if (txs.length || created.length) actions.addTransactions(txs, created);
+    // Custody statements: the balance on the statement date becomes the investment's current value.
+    for (const b of balances) actions.updateAsset(b.assetId, { manualValue: b.value, manualValueDate: b.date });
     toast(t(`${txs.length} lançamento(s) importado(s)${created.length ? `, ${created.length} ativo(s) novo(s)` : ''}`, `${txs.length} transaction(s) imported${created.length ? `, ${created.length} new asset(s)` : ''}`), { undo: true });
     setPreview(null);
   }
@@ -112,9 +117,9 @@ export function Importar() {
                   <tr key={r.key} style={r.duplicate ? { opacity: 0.5 } : undefined}>
                     <td><input type="checkbox" checked={sel.has(r.key)} onChange={() => setSel((s) => { const n = new Set(s); if (n.has(r.key)) n.delete(r.key); else n.add(r.key); return n; })} /></td>
                     <td className="text-2">{fmtDate(r.tx.date)}</td>
-                    <td>{TX_LABEL[r.tx.type]}</td>
+                    <td>{r.balanceOnly ? t('Atualiza saldo', 'Balance update') : isMarketClass(r.cls) ? TX_LABEL[r.tx.type] : r.tx.type === 'BUY' ? t('Aplicação', 'Deposit') : t('Resgate', 'Redemption')}</td>
                     <td><div className="row"><span className="ticker">{r.ticker}</span><ClassChip cls={r.cls} /></div></td>
-                    <td className="num">{r.tx.quantity !== 1 || r.tx.type === 'BUY' || r.tx.type === 'SELL' ? qty(r.tx.quantity) : ''}</td>
+                    <td className="num">{isMarketClass(r.cls) && (r.tx.quantity !== 1 || r.tx.type === 'BUY' || r.tx.type === 'SELL') ? qty(r.tx.quantity) : ''}</td>
                     <td className="num">{fmtCurrency(r.tx.price, r.cls === 'EXTERIOR' ? 'USD' : 'BRL', { always: true })}</td>
                     <td className="text-2">{r.tx.institution}</td>
                     <td className="small" style={{ color: 'var(--warn-ink)' }}>{r.duplicate ? t('já importado', 'already imported') : r.warning}</td>
@@ -139,10 +144,11 @@ export function Importar() {
       >
         <Icon name="upload" size={28} />
         <h3 style={{ margin: '8px 0 4px' }}>{t('Arraste um arquivo aqui ou clique para escolher', 'Drop a file here or click to choose')}</h3>
-        <div className="muted">{t('Excel, CSV ou OFX — B3, extrato do banco, Nomad/Avenue ou planilha modelo. Você revisa tudo antes de importar.', 'Excel, CSV or OFX — B3, bank statement, Nomad/Avenue or the template. You review everything before importing.')}</div>
-        <input ref={input} type="file" accept=".xlsx,.xls,.csv,.ofx" hidden onChange={(e) => { handle(e.target.files); e.target.value = ''; }} />
+        <div className="muted">{t('Excel, CSV, OFX ou PDF — B3, extratos do banco, Nomad/Avenue ou planilha modelo. Você revisa tudo antes de importar.', 'Excel, CSV, OFX or PDF — B3, bank statements, Nomad/Avenue or the template. You review everything before importing.')}</div>
+        <input ref={input} type="file" accept=".xlsx,.xls,.csv,.ofx,.pdf" hidden onChange={(e) => { handle(e.target.files); e.target.value = ''; }} />
       </div>
       {err && <div className="notice"><Icon name="alert" /><span>{err}</span></div>}
+      {busy && <div className="notice info"><span className="spinner" /><span>{busy}</span></div>}
 
       <div className="grid grid-2">
         <div className="card card-pad">
@@ -158,7 +164,7 @@ export function Importar() {
         <div className="stack">
           <div className="card card-pad">
             <h2 style={{ fontSize: 15, marginTop: 0 }}>{t('Caixinhas e aplicações do banco', 'Bank savings boxes and deposits')}</h2>
-            <p className="text-2" style={{ marginTop: 0 }}>{t('Caixinhas, RDBs e CDBs do banco não aparecem na B3. No app do banco, exporte o extrato da conta (CSV ou OFX) e arraste aqui: pegamos só o dinheiro guardado e resgatado e montamos o investimento (100% do CDI, liquidez diária — dá pra ajustar depois).', "Bank savings boxes, RDBs and CDBs don't show up at B3. In your bank's app, export the account statement (CSV or OFX) and drop it here: we keep only money put in and taken out and build the investment (100% of CDI, daily liquidity — adjustable later).")}</p>
+            <p className="text-2" style={{ marginTop: 0 }}>{t('Caixinhas, RDBs e CDBs do banco não aparecem na B3. Mais fácil: o Extrato de Custódia em PDF (Nubank: Investimentos → Extratos → Custódia) — cada caixinha e CDB entra com o saldo certo, e importar um mais novo só atualiza os saldos. Também aceitamos o extrato da conta (CSV ou OFX).', "Bank savings boxes, RDBs and CDBs don't show up at B3. Easiest: the custody statement PDF (Nubank: Investments → Statements → Custody) — every savings box and CDB comes in with the right balance, and importing a newer one just updates the balances. Account statements (CSV or OFX) work too.")}</p>
           </div>
           <div className="card card-pad">
             <h2 style={{ fontSize: 15, marginTop: 0 }}>{t('Corretora dos EUA (Nomad, Avenue…)', 'US broker (Nomad, Avenue…)')}</h2>

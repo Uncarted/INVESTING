@@ -18,6 +18,10 @@ export interface PreviewRow {
   warning?: string;
   /** Fixed-income details for a new asset (bank statement imports). */
   fixed?: FixedIncomeInfo;
+  /** Balance on the statement date (custody statements): sets the asset's current value. */
+  balance?: { value: number; date: string };
+  /** The asset already exists: only update its balance, don't add a transaction. */
+  balanceOnly?: boolean;
 }
 
 export interface ImportPreview {
@@ -410,7 +414,119 @@ export function prettyInstitution(raw: string): string | undefined {
   return s;
 }
 
+// ---------------------------------------------------------------------------
+// Custody statements (PDF): what you hold today, e.g. Nubank's "Extrato de Custódia".
+
+/** Text lines of a PDF, in reading order, cells separated by " | ". pdf.js is loaded from a CDN only when needed. */
+export async function readPdfLines(file: File): Promise<string[]> {
+  const url = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/legacy/build/pdf.min.mjs';
+  const pdfjs = await import(/* @vite-ignore */ url);
+  pdfjs.GlobalWorkerOptions.workerSrc = url.replace('pdf.min.mjs', 'pdf.worker.min.mjs');
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const out: string[] = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const tc = await (await doc.getPage(i)).getTextContent();
+    const lines = new Map<number, [number, string][]>();
+    for (const it of tc.items as { str: string; transform: number[] }[]) {
+      if (!it.str?.trim()) continue;
+      const y = Math.round(it.transform[5]);
+      (lines.get(y) ?? lines.set(y, []).get(y)!).push([it.transform[4], it.str.trim()]);
+    }
+    for (const [, cells] of [...lines].sort((a, b) => b[0] - a[0])) out.push(cells.sort((a, b) => a[0] - b[0]).map((c) => c[1]).join(' | '));
+  }
+  return out;
+}
+
+const MONEY = /^-?\d{1,3}(\.\d{3})*,\d{2}$/;
+const DATE = /^\d{2}\/\d{2}\/\d{4}$/;
+const toISO = (d: string) => d.split('/').reverse().join('-');
+const cellsOf = (line: string) => line.split('|').map((c) => c.trim()).filter(Boolean);
+
+/** "130% CDI" · "IPCA + 6,2%" · "12,5% a.a." → indexer and rate. */
+function parseRate(s: string): { indexer: 'CDI' | 'IPCA' | 'PRE' | 'SELIC'; rate: number } | null {
+  const n = (x: string) => parseNumber(x.replace('%', ''));
+  let m = s.match(/([\d.,]+)\s*%\s*(do\s*)?CDI/i);
+  if (m) return { indexer: 'CDI', rate: n(m[1]) };
+  m = s.match(/IPCA\s*\+\s*([\d.,]+)/i);
+  if (m) return { indexer: 'IPCA', rate: n(m[1]) };
+  m = s.match(/SELIC\s*\+\s*([\d.,]+)/i);
+  if (m) return { indexer: 'SELIC', rate: n(m[1]) };
+  m = s.match(/([\d.,]+)\s*%\s*(a\.?a|pr[eé])/i);
+  if (m) return { indexer: 'PRE', rate: n(m[1]) };
+  return null;
+}
+
+export function buildCustodyPreview(lines: string[], existing: { assets: Asset[]; transactions: Transaction[] }): ImportPreview {
+  const text = lines.join('\n');
+  const date = toISO(text.match(/Cust[óo]dia em:?\s*(\d{2}\/\d{2}\/\d{4})/i)?.[1] ?? '') || new Date().toISOString().slice(0, 10);
+  const bank = /nu ?pagamentos|nubank|nu invest/i.test(text) ? 'Nubank' : bankName(text.match(/(Banco [A-Z][\wÀ-ú]+|Inter|Itaú|Bradesco|BTG Pactual|XP)/)?.[1] ?? t('Banco', 'Bank'));
+  const keys = new Set(existing.transactions.map((x) => x.importKey).filter(Boolean));
+  const out: PreviewRow[] = [];
+  const skipped: Record<string, number> = {};
+  const find = (ticker: string) => existing.assets.find((a) => a.ticker.toLowerCase() === ticker.toLowerCase());
+
+  const push = (ticker: string, fixed: FixedIncomeInfo, invested: number, appliedOn: string, balance: number, note: string) => {
+    const has = find(ticker);
+    const key = `custody|${ticker}|${appliedOn}|${invested}`;
+    out.push({
+      key, ticker, cls: 'RENDA_FIXA',
+      tx: { type: 'BUY', date: appliedOn, quantity: 1, price: invested, fees: 0, institution: bank, source: 'csv', importKey: key, notes: note },
+      duplicate: false,
+      fixed,
+      balance: { value: balance, date },
+      balanceOnly: !!has || keys.has(key),
+      warning: has || keys.has(key) ? t(`Já existe — só atualiza o saldo para ${balance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, `Already there — only updates the balance`) : undefined,
+    });
+  };
+
+  let section: 'caixinha' | 'fixa' | null = null;
+  let caixinha = '';
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/Cust[óo]dia em Caixinhas/i.test(line)) section = 'caixinha';
+    else if (/Cust[óo]dia em Renda Fixa/i.test(line)) section = 'fixa';
+    const cx = line.match(/Caixinha\s+["“](.+?)["”]/i);
+    if (cx) {
+      caixinha = cx[1].trim();
+      section = 'caixinha';
+      continue;
+    }
+    const cells = cellsOf(line);
+    const money = cells.filter((c) => MONEY.test(c));
+    if (section === 'caixinha' && caixinha && /^(RDB|CDB|LCI|LCA)/i.test(cells[0] ?? '') && money.length) {
+      const balance = parseNumber(money[0]);
+      const kind = /^LCI/i.test(cells[0]) ? 'LCI' : /^LCA/i.test(cells[0]) ? 'LCA' : 'CDB';
+      // A caixinha's history isn't in the statement: start it at today's balance.
+      push(`Caixinha ${caixinha}`, { kind, indexer: 'CDI', rate: 100, daily: true }, balance, date, balance, `${cells[0]} · ${t('saldo do extrato de custódia', 'custody statement balance')}`);
+      caixinha = '';
+      continue;
+    }
+    if (section === 'fixa' && money.length >= 2 && cells.some((c) => DATE.test(c)) && cells.some((c) => /%/.test(c))) {
+      // Columns: emissor · vencimento · taxa · valor aplicado · data de aplicação · saldo bruto · IR · IOF · líquido · disponível
+      const kindLine = [lines[i - 1] ?? '', line].map((l) => cellsOf(l)[0] ?? '').find((c) => /^(CDB|LCI|LCA|LC|RDB|CRI|CRA|Deb|Tesouro)/i.test(c)) ?? 'CDB';
+      const kind: FixedIncomeInfo['kind'] = /^LCI/i.test(kindLine) ? 'LCI' : /^LCA/i.test(kindLine) ? 'LCA' : /^CRI/i.test(kindLine) ? 'CRI' : /^CRA/i.test(kindLine) ? 'CRA' : /^Deb/i.test(kindLine) ? 'DEBENTURE' : /^Tesouro/i.test(kindLine) ? 'TESOURO' : 'CDB';
+      const dates = cells.filter((c) => DATE.test(c));
+      const rate = parseRate(cells.find((c) => /%/.test(c)) ?? '') ?? { indexer: 'CDI' as const, rate: 100 };
+      const issuer = cells.find((c) => !MONEY.test(c) && !DATE.test(c) && !/%/.test(c) && !/^(CDB|LCI|LCA|RDB)/i.test(c)) ?? bank;
+      const around = [lines[i - 1], line, lines[i + 1]].join(' ');
+      const daily = /liquidez di[áa]ria/i.test(around);
+      const maturity = dates[0] ? toISO(dates[0]) : undefined;
+      const appliedOn = dates[1] ? toISO(dates[1]) : date;
+      const invested = parseNumber(money[0]);
+      const balance = parseNumber(money[1]);
+      const label = kind === 'TESOURO' ? 'Tesouro' : kind === 'DEBENTURE' ? 'Debênture' : kind;
+      const rateStr = rate.indexer === 'CDI' ? `${numFmt(rate.rate)}% CDI` : rate.indexer === 'IPCA' ? `IPCA+${numFmt(rate.rate)}%` : rate.indexer === 'SELIC' ? `Selic+${numFmt(rate.rate)}%` : `${numFmt(rate.rate)}% a.a.`;
+      const ticker = [label, issuer, rateStr, maturity?.slice(0, 4)].filter(Boolean).join(' ');
+      push(ticker, { kind, indexer: rate.indexer, rate: rate.rate, maturity, issuer: issuer !== bank ? issuer : undefined, daily: daily || undefined }, invested, appliedOn, balance, `${kindLine}${daily ? ' · liquidez diária' : ''}`);
+    }
+  }
+  if (!out.length) skipped[t('Nenhuma posição reconhecida no PDF', 'No positions recognized in the PDF')] = 1;
+  return { format: 'custody', rows: out, skipped };
+}
+const numFmt = (n: number) => String(Math.round(n * 100) / 100).replace('.', ',');
+
 export const FORMAT_LABEL = (): Record<string, string> => ({
+  custody: t('Extrato de custódia (PDF) — posição de hoje', 'Custody statement (PDF) — current holdings'),
   negociacao: 'B3 — Negociação',
   movimentacao: 'B3 — Movimentação',
   template: t('Planilha modelo', 'Template spreadsheet'),
@@ -424,6 +540,7 @@ export function materialize(rows: PreviewRow[], assets: Asset[]) {
   const byTicker = new Map(assets.map((a) => [a.ticker.toUpperCase(), a]));
   const created: Asset[] = [];
   const txs: Omit<Transaction, 'id' | 'createdAt'>[] = [];
+  const balances: { assetId: string; value: number; date: string }[] = [];
   for (const r of rows) {
     let a = byTicker.get(r.ticker.toUpperCase());
     if (!a) {
@@ -450,9 +567,10 @@ export function materialize(rows: PreviewRow[], assets: Asset[]) {
     } else if (!a.name && r.name) {
       a.name = r.name;
     }
-    txs.push({ ...r.tx, assetId: a.id });
+    if (r.balance) balances.push({ assetId: a.id, ...r.balance });
+    if (!r.balanceOnly) txs.push({ ...r.tx, assetId: a.id });
   }
-  return { created, txs };
+  return { created, txs, balances };
 }
 
 export const TEMPLATE_HEADERS = ['data', 'tipo', 'ativo', 'classe', 'quantidade', 'preco', 'taxas', 'instituicao', 'observacao'];
