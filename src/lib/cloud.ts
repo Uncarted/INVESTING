@@ -175,6 +175,8 @@ function translate(msg: string) {
   if (m.includes('password should be')) return t('A senha precisa ter pelo menos 6 caracteres.', 'The password needs at least 6 characters.');
   if (m.includes('provider is not enabled')) return t('Login com Google ainda não foi ativado no Supabase.', "Google sign-in isn't enabled in Supabase yet.");
   if (m.includes('same as the old') || m.includes('should be different')) return t('A nova senha precisa ser diferente da antiga.', 'The new password must be different from the old one.');
+  if (m.includes('email rate limit') || m.includes('over_email_send_rate'))
+    return t('O site atingiu o limite de emails por hora (não é culpa sua). Tente de novo em até 1 hora — ou entre com o Google.', 'The site hit its hourly email limit (not your fault). Try again within an hour — or continue with Google.');
   if (m.includes('rate limit')) return t('Muitas tentativas. Espere um pouco e tente de novo.', 'Too many attempts. Wait a bit and try again.');
   return msg;
 }
