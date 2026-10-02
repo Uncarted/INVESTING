@@ -10,17 +10,21 @@ export const easeOutExpo = (t: number) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t)
 export function useTween(target: number, duration = 900, from = 0): number {
   const [v, setV] = useState(reducedMotion() ? target : from);
   const cur = useRef(v);
+  const first = useRef(true);
   useEffect(() => {
     if (reducedMotion()) {
       cur.current = target;
       setV(target);
       return;
     }
+    // Count up on first show; after that (live price ticks) glide quickly instead of re-counting.
+    const ms = first.current ? duration : Math.min(duration, 450);
+    first.current = false;
     const start = cur.current;
     const t0 = performance.now();
     let raf = 0;
     const step = (now: number) => {
-      const k = Math.min(1, (now - t0) / duration);
+      const k = Math.min(1, (now - t0) / ms);
       const x = start + (target - start) * easeOutExpo(k);
       cur.current = x;
       setV(x);

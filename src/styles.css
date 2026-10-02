@@ -352,13 +352,13 @@ table.table { width: 100%; border-collapse: collapse; }
 }
 
 /* Overlays */
-.overlay { position: fixed; inset: 0; background: var(--overlay); backdrop-filter: blur(6px); display: grid; place-items: center; z-index: 50; padding: 16px; animation: fade 0.15s ease-out; }
+.overlay { position: fixed; inset: 0; background: var(--overlay); backdrop-filter: blur(3px); display: grid; place-items: center; z-index: 50; padding: 16px; animation: fade 0.15s ease-out; }
 .modal { width: min(620px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 26px; box-shadow: var(--shadow-lg); animation: pop 0.16s ease-out; }
 .modal-head { display: flex; align-items: center; gap: 8px; padding: 22px 24px 10px; }
 .modal-head h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 30px; letter-spacing: -0.01em; }
 .modal-body { padding: 8px 24px 20px; }
 .modal-foot { display: flex; gap: 8px; justify-content: flex-end; align-items: center; padding: 14px 24px 20px; border-top: 1px solid var(--border); position: sticky; bottom: 0; background: var(--surface); }
-.drawer-overlay { position: fixed; inset: 0; background: var(--overlay); backdrop-filter: blur(4px); z-index: 40; animation: fade 0.15s; }
+.drawer-overlay { position: fixed; inset: 0; background: var(--overlay); z-index: 40; animation: fade 0.15s; }
 .drawer { position: fixed; top: 10px; right: 10px; bottom: 10px; width: min(540px, calc(100vw - 20px)); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 26px; z-index: 41; box-shadow: var(--shadow-lg); overflow: auto; animation: slide 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .drawer .modal-head h2 { font-size: 34px; }
 

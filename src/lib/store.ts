@@ -77,7 +77,7 @@ export function onEdit(fn: (d: Data) => void) {
   return () => editListeners.delete(fn);
 }
 
-function commit(next: Data, undoLabel?: string) {
+function commit(next: Data, undoLabel?: string, background = false) {
   if (undoLabel) undoStack = [...undoStack.slice(-19), { label: undoLabel, data: state }];
   state = next;
   try {
@@ -85,6 +85,9 @@ function commit(next: Data, undoLabel?: string) {
   } catch (e) {
     console.error('Falha ao salvar', e);
   }
+  // Background saves (latest prices) only refresh the local copy: the screen already shows
+  // them live, and they don't need to go to the cloud.
+  if (background) return;
   listeners.forEach((l) => l());
   editListeners.forEach((l) => l(state));
 }
@@ -172,7 +175,7 @@ export const actions = {
       changed = true;
       return { ...a, currentPrice: p.price, prevClose: p.prevClose ?? a.prevClose, priceUpdatedAt: now };
     });
-    if (changed) commit({ ...state, assets });
+    if (changed) commit({ ...state, assets }, undefined, true);
   },
   updateSettings(patch: Partial<Settings>) {
     commit({ ...state, settings: { ...state.settings, ...patch } });

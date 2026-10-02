@@ -36,15 +36,18 @@ let state: LiveState = {
 };
 const listeners = new Set<() => void>();
 let notifyQueued = false;
+let lastNotify = 0;
 function notify() {
-  // Batch bursts of WebSocket ticks into one render per frame.
+  // Prices can tick many times a second; redraw the screen at most once a second.
   if (notifyQueued) return;
   notifyQueued = true;
-  requestAnimationFrame(() => {
+  const wait = Math.max(0, 1000 - (Date.now() - lastNotify));
+  window.setTimeout(() => {
     notifyQueued = false;
+    lastNotify = Date.now();
     state = { ...state, version: state.version + 1 };
     listeners.forEach((l) => l());
-  });
+  }, wait);
 }
 const setStatus = (k: keyof LiveState['status'], v: FeedStatus) => {
   if (state.status[k] === v) return;
