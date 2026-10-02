@@ -137,11 +137,10 @@ a { color: var(--accent-text); }
 .wordmark i { color: var(--accent); font-style: normal; }
 .wordmark { display: inline-flex; align-items: baseline; }
 /* Upside-down "i": the stem hangs from the top, the (lime) dot sits on the baseline like a period. */
-/* Upside-down "i" drawn to match the serif: thin stem with a small serif on top, lime dot on the baseline. */
-.wm-i { display: inline-block; position: relative; width: 0.24em; height: 0.66em; margin-left: 0.01em; }
-.wm-i::before { content: ''; position: absolute; left: 50%; top: 0.2em; height: 0.31em; width: 0.062em; transform: translateX(-50%); background: currentColor; border-radius: 0 0 0.03em 0.03em; box-shadow: 0 0 0 0 currentColor; }
-.wm-i > i { position: absolute; left: 50%; top: 0.2em; width: 0.2em; height: 0.035em; transform: translateX(-50%); background: currentColor; }
-.wm-i::after { content: ''; position: absolute; left: 50%; bottom: 0; width: 0.13em; height: 0.13em; transform: translateX(-50%); border-radius: 50%; background: var(--accent); }
+/* The original "Wallet." with the font's own "ı" standing on the lime dot. */
+.wm-i { white-space: nowrap; }
+.wm-i .g { display: inline-block; transform: translateY(-0.2em); }
+.wm-i i { display: inline-block; margin-left: -0.235em; }
 .pill-btn {
   display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px 0 14px; border-radius: 999px;
   border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; transition: transform 0.1s, filter 0.15s;

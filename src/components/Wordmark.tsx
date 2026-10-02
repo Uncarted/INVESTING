@@ -5,7 +5,7 @@ export function Wordmark({ size, className = '' }: { size?: number; className?: 
   return (
     <div className={'wordmark ' + className} style={size ? { fontSize: size } : undefined} aria-label="Walleti" role="img">
       <span aria-hidden="true">Wallet</span>
-      <span className="wm-i" aria-hidden="true"><i /></span>
+      <span className="wm-i" aria-hidden="true"><span className="g">ı</span><i>.</i></span>
     </div>
   );
 }
