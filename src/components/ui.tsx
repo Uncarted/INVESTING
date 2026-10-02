@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { actions } from '../lib/store';
 import type { AssetClass } from '../lib/types';
@@ -8,18 +8,24 @@ import { t } from '../lib/i18n';
 export function Modal({
   title, onClose, children, footer, wide,
 }: { title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
+  // Closing plays a short exit animation before the modal goes away.
+  const [closing, setClosing] = useState(false);
+  const close = useCallback(() => {
+    setClosing(true);
+    window.setTimeout(onClose, 170);
+  }, [onClose]);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [close]);
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className={'overlay' + (closing ? ' closing' : '')} onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div className={'modal' + (wide ? ' wide' : '')} role="dialog" aria-modal="true">
         <div className="modal-head">
           <h2>{title}</h2>
           <div className="spacer" />
-          <button className="icon-btn" onClick={onClose} aria-label={t('Fechar', 'Close')}><Icon name="x" /></button>
+          <button className="icon-btn" onClick={close} aria-label={t('Fechar', 'Close')}><Icon name="x" /></button>
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}

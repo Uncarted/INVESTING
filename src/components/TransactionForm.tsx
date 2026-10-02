@@ -1,5 +1,5 @@
 import { apiKey } from '../lib/cloud';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Modal, toast } from './ui';
 import { Icon } from './Icon';
 import { Logo, marketOf } from './Logo';
@@ -427,13 +427,14 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
   }, [cashAsset, data.transactions, data.settings, date, editing?.id]);
 
   // ----- Renda fixa: everything is picked; the name is built from the choices -----
-  const fixedPositions = useMemo(() => computePositions(data.assets.filter((a) => !isMarketClass(a.cls)), data.transactions, data.settings, today()), [data]);
+  // Only what the current type needs (keeps switching types instant).
+  const fixedPositions = useMemo(() => (mode === 'fixed' ? computePositions(data.assets.filter((a) => !isMarketClass(a.cls)), data.transactions, data.settings, today()) : []), [data, mode]);
   const fixedHoldings = fixedPositions.filter((p) => !p.closed || p.asset.id === initAsset?.id).map((p) => p.asset);
   const fixedSub = (a: Asset) => {
     const p = fixedPositions.find((x) => x.asset.id === a.id);
     return [p ? money(p.value, { always: true }) : '', a.institution].filter(Boolean).join(' · ');
   };
-  const marketPositions = useMemo(() => computePositions(data.assets.filter((a) => isMarketClass(a.cls)), data.transactions, data.settings, today()), [data]);
+  const marketPositions = useMemo(() => (mode === 'income' || mode === 'event' ? computePositions(data.assets.filter((a) => isMarketClass(a.cls)), data.transactions, data.settings, today()) : []), [data, mode]);
   const marketHoldings = marketPositions
     .filter((p) => p.quantity > 0 || p.asset.id === initAsset?.id)
     .sort((a, b) => b.value - a.value)
@@ -488,6 +489,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
           </div>
         )}
 
+        <AutoHeight>
         <div key={mode} className="mode-pane stack">
         {mode === 'market' && (
           <>
@@ -884,6 +886,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
           </div>
         )}
         </div>
+        </AutoHeight>
 
         <label className="field">
           <span>{t('Observação (opcional)', 'Note (optional)')}</span>
@@ -1006,6 +1009,30 @@ function InstitutionField({ value, onChange, options, label }: { value: string; 
         </select>
       )}
     </label>
+  );
+}
+
+/** Animates its height when the content inside changes size (e.g. switching the entry type). */
+function AutoHeight({ children }: { children: React.ReactNode }) {
+  const inner = useRef<HTMLDivElement>(null);
+  const [h, setH] = useState<number | undefined>(undefined);
+  const [moving, setMoving] = useState(false);
+  useLayoutEffect(() => {
+    const el = inner.current!;
+    const ro = new ResizeObserver(() => {
+      setH((old) => {
+        const next = el.offsetHeight;
+        if (old !== undefined && Math.abs(next - old) > 2) setMoving(true);
+        return next;
+      });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div className={'auto-h' + (moving ? ' moving' : '')} style={{ height: h }} onTransitionEnd={() => setMoving(false)}>
+      <div ref={inner}>{children}</div>
+    </div>
   );
 }
 
@@ -1149,7 +1176,13 @@ function SymbolSearch({
   value, onChange, onPick, onEnterRaw, holdings, autoFocus,
 }: { value: string; onChange: (v: string) => void; onPick: (p: Pick) => void; onEnterRaw: (v: string) => void; holdings: Asset[]; autoFocus?: boolean }) {
   const data = useData();
-  const [open, setOpen] = useState(!!autoFocus);
+  // Open the suggestions right after the form's entrance animation, not during it.
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!autoFocus) return;
+    const id = window.setTimeout(() => setOpen(true), 260);
+    return () => clearTimeout(id);
+  }, [autoFocus]);
   const [active, setActive] = useState(0);
   const [remote, setRemote] = useState<Item[]>([]);
   const [searching, setSearching] = useState(false);
