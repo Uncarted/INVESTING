@@ -135,6 +135,11 @@ a { color: var(--accent-text); }
 }
 .wordmark { font-family: var(--font-display); font-size: 30px; letter-spacing: -0.01em; line-height: 1; user-select: none; }
 .wordmark i { color: var(--accent); font-style: normal; }
+.wordmark { display: inline-flex; align-items: baseline; }
+/* Upside-down "i": the stem hangs from the top, the (lime) dot sits on the baseline like a period. */
+.wm-i { white-space: nowrap; }
+.wm-i .g { display: inline-block; transform: rotate(180deg) translateY(var(--wm-up, -0.03em)); }
+.wm-i .d { color: var(--accent); display: inline-block; margin-left: var(--wm-dx, -0.25em); }
 .pill-btn {
   display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px 0 14px; border-radius: 999px;
   border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; transition: transform 0.1s, filter 0.15s;
@@ -677,3 +682,7 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 }
 .auth.auth-single { grid-template-columns: minmax(0, 420px); justify-content: center; }
 .auth-card .notice .icon-btn.sm { margin-left: auto; flex: none; }
+
+/* Segmented choices inside forms use the full width, evenly. */
+.modal .seg { display: flex; }
+.modal .seg button { flex: 1; text-align: center; justify-content: center; }

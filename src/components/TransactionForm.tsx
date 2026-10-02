@@ -802,7 +802,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
               <label className="field">
                 <span>{cashOp === 'balance' ? t('Saldo na conta', 'Account balance') : t('Valor', 'Amount')} ({sym})</span>
                 <input className="input num" inputMode="decimal" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} placeholder={t('0,00', '0.00')} autoFocus={!!initAsset} />
-                {cashAsset && <span className="hint">{t('Hoje o Wallet tem', 'Wallet has')} {fmtCurrency(cashHave, cashCur, { always: true })} {t('em', 'in')} {cashAsset.ticker}</span>}
+                {cashAsset && <span className="hint">{t('Hoje o Walleti tem', 'Walleti has')} {fmtCurrency(cashHave, cashCur, { always: true })} {t('em', 'in')} {cashAsset.ticker}</span>}
               </label>
               {foreign && (
                 <label className="field">

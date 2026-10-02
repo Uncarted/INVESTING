@@ -59,7 +59,7 @@ export function Importar() {
       }
       if (p.format === 'desconhecido' || (p.format === 'ai' && !p.rows.length && !Object.keys(p.skipped).length)) {
         if (aiNote) return setErr(aiNote);
-        setErr(t('Não encontrei negociações nem posições nesse arquivo. Funciona com: extratos da B3, notas/confirmações de compra e venda, extratos mensais e de custódia (PDF), extratos do banco (CSV/OFX) e a planilha modelo. Se for outro formato, me mande o arquivo que eu ensino o Wallet a ler.', "Couldn't find trades or holdings in this file. Works with: B3 statements, trade confirmations, monthly and custody statements (PDF), bank statements (CSV/OFX) and the template. If it's another format, send it over and I'll teach Wallet to read it."));
+        setErr(t('Não encontrei negociações nem posições nesse arquivo. Funciona com: extratos da B3, notas/confirmações de compra e venda, extratos mensais e de custódia (PDF), extratos do banco (CSV/OFX) e a planilha modelo. Se for outro formato, me mande o arquivo que eu ensino o Walleti a ler.', "Couldn't find trades or holdings in this file. Works with: B3 statements, trade confirmations, monthly and custody statements (PDF), bank statements (CSV/OFX) and the template. If it's another format, send it over and I'll teach Walleti to read it."));
         return;
       }
       setPreview({ ...p, file: file.name });

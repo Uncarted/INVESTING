@@ -1,3 +1,4 @@
+import { Wordmark } from './components/Wordmark';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { actions, useData } from './lib/store';
 import { setHideValues } from './lib/format';
@@ -148,7 +149,7 @@ export function App() {
     <>
       <div className="shell">
         <header className="topbar">
-          <div className="wordmark">Wallet<i>.</i></div>
+          <Wordmark />
           <div className="spacer" />
           {topbarActions}
           <div className="menu-wrap" ref={menuRef}>

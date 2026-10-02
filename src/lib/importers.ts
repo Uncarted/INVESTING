@@ -653,7 +653,7 @@ export function buildBrokerStatementPreview(lines: string[], existing: { assets:
       continue;
     }
     if (diff < 0) {
-      skip(t(`${h.symbol}: o Wallet tem ${have + imported}, o extrato mostra ${h.qty} — falta lançar alguma venda`, `${h.symbol}: Wallet has ${have + imported}, the statement shows ${h.qty} — a sale is missing`));
+      skip(t(`${h.symbol}: o Walleti tem ${have + imported}, o extrato mostra ${h.qty} — falta lançar alguma venda`, `${h.symbol}: Walleti has ${have + imported}, the statement shows ${h.qty} — a sale is missing`));
       continue;
     }
     const key = `apex-pos|${date}|${h.symbol}|${diff}`;
@@ -859,7 +859,7 @@ export function buildAiPreview(ai: { institution?: string | null; statementDate?
     } else if (it.kind === 'position' && market && ticker && (it.quantity ?? 0) > 0) {
       const diff = Math.round((it.quantity! - held(ticker) - out.filter((r) => r.ticker === ticker && (r.tx.type === 'BUY' || r.tx.type === 'SELL')).reduce((s, r) => s + (r.tx.type === 'BUY' ? r.tx.quantity : -r.tx.quantity), 0)) * 1e6) / 1e6;
       if (Math.abs(diff) < 1e-6) { skip(t(`${ticker}: já confere`, `${ticker}: already matches`)); continue; }
-      if (diff < 0) { skip(t(`${ticker}: o documento mostra menos do que o Wallet — falta alguma venda`, `${ticker}: the document shows fewer shares — a sale is missing`)); continue; }
+      if (diff < 0) { skip(t(`${ticker}: o documento mostra menos do que o Walleti — falta alguma venda`, `${ticker}: the document shows fewer shares — a sale is missing`)); continue; }
       const price = (it.price ?? 0) > 0 ? it.price! : (it.amount ?? 0) / it.quantity!;
       if (!(price > 0)) { skip(t('Posição sem preço', 'Position without price')); continue; }
       const key = `ai-pos|${asOf}|${ticker}|${diff}`;

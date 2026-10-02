@@ -1,3 +1,4 @@
+import { Wordmark } from './Wordmark';
 import { useState } from 'react';
 import { cancelRecovery, clearAuthError, resetPassword, signIn, signInWithGoogle, signOut, signUp, updatePassword, useCloud } from '../lib/cloud';
 import { Icon } from './Icon';
@@ -49,7 +50,7 @@ export function AuthScreen() {
         <Icon name="globe" size={14} /> {getLang() === 'en' ? 'Português' : 'English'}
       </button>
       <div className="auth-side">
-        <div className="wordmark" style={{ fontSize: 40 }}>Wallet<i>.</i></div>
+        <Wordmark size={40} />
         <h1>
           {t('Seus investimentos,', 'Your investments,')}<br /><em>{t('num lugar só.', 'all in one place.')}</em>
         </h1>
@@ -143,7 +144,7 @@ export function NewPasswordScreen() {
   return (
     <div className="auth auth-single">
       <form className="auth-card" onSubmit={submit}>
-        <div className="wordmark" style={{ fontSize: 34 }}>Wallet<i>.</i></div>
+        <Wordmark size={34} />
         <h2 style={{ margin: '6px 0 0', fontWeight: 600, fontSize: 20 }}>{t('Crie uma nova senha', 'Choose a new password')}</h2>
         <p className="muted small" style={{ margin: 0 }}>{t('Depois disso você já entra direto na sua carteira.', "After that you'll go straight to your portfolio.")}</p>
         <label className="field">
@@ -168,7 +169,7 @@ export function Splash({ text }: { text?: string }) {
   text ??= t('Carregando sua carteira…', 'Loading your portfolio…');
   return (
     <div className="splash">
-      <div className="wordmark" style={{ fontSize: 44 }}>Wallet<i>.</i></div>
+      <Wordmark size={44} />
       <div className="row muted"><span className="spinner" /> {text}</div>
     </div>
   );
