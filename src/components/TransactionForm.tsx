@@ -488,6 +488,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
           </div>
         )}
 
+        <div key={mode} className="mode-pane stack">
         {mode === 'market' && (
           <>
             <div className="seg">
@@ -882,6 +883,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
             )}
           </div>
         )}
+        </div>
 
         <label className="field">
           <span>{t('Observação (opcional)', 'Note (optional)')}</span>

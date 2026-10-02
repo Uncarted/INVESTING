@@ -201,7 +201,7 @@ export function buildHistory(
   from: string,
   bars: Map<string, Bar[]>,
   fx: { USD: Bar[]; EUR: Bar[] },
-  now: { value: number; invested: number },
+  now?: { value: number; invested: number },
 ): HistPoint[] {
   const start = midday(from);
   const end = midday(today());
@@ -216,7 +216,7 @@ export function buildHistory(
     const pos = computePositions(priced, txs, s, d);
     out.push({ t, value: pos.reduce((x, p) => x + p.value, 0), invested: pos.reduce((x, p) => x + p.cost, 0) });
   }
-  out.push({ t: end, ...now });
+  if (now) out.push({ t: end, ...now });
   return out;
 }
 
@@ -256,11 +256,13 @@ export function usePortfolioHistory(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, from, held.map((a) => a.id + a.ticker).join(), keys]);
 
-  const points = useMemo(
-    () => (range === '1D' ? [] : buildHistory(assets, txs, settings, from, bars, fx, now)),
+  // The history only changes when data arrives; live ticks just move the last point (cheap).
+  const base = useMemo(
+    () => (range === '1D' ? [] : buildHistory(assets, txs, settings, from, bars, fx)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [range, from, bars, fx, txs, assets.length, now.value, now.invested],
+    [range, from, bars, fx, txs, assets.length],
   );
+  const points = useMemo(() => (range === '1D' ? [] : [...base, { t: Date.parse(today() + 'T12:00:00'), ...now }]), [base, range, now]);
   const missing = held.filter((a) => bars.has(a.id) && !bars.get(a.id)!.length).map((a) => a.ticker);
   return { points, loading: pending > 0, missing };
 }

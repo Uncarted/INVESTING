@@ -50,7 +50,7 @@ export function Configuracoes() {
       </div>
 
       <div className="card card-pad stack">
-        <div className="row">
+        <div className="row wrap">
           <h2 style={{ fontSize: 15, margin: 0 }}>{t('Taxas para estimar a renda fixa', 'Rates used to estimate fixed income')}</h2>
           <div className="spacer" />
           <button
@@ -70,7 +70,7 @@ export function Configuracoes() {
             <Icon name="refresh" size={14} /> {loading ? t('Buscando…', 'Fetching…') : t('Buscar no Banco Central', 'Fetch from Banco Central')}
           </button>
         </div>
-        <div className="form-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0,1fr))' }}>
+        <div className="form-grid rates-grid">
           {rateField('CDI', 'cdiRate', t('Para títulos % do CDI', 'For % of CDI bonds'))}
           {rateField('Selic', 'selicRate', t('Para Tesouro Selic', 'For Tesouro Selic'))}
           {rateField(t('IPCA (12 meses)', 'IPCA (12 months)'), 'ipcaRate', t('Para títulos IPCA+', 'For IPCA+ bonds'))}

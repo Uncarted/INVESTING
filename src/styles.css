@@ -313,7 +313,8 @@ input.input.num { text-align: left; font-variant-numeric: tabular-nums; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .form-grid .full { grid-column: 1 / -1; }
 .seg { display: inline-flex; padding: 4px; background: var(--surface-2); border-radius: 999px; gap: 2px; flex-wrap: wrap; }
-.seg button { border: 0; background: none; padding: 7px 14px; border-radius: 999px; cursor: pointer; color: var(--text-2); font-weight: 550; }
+.seg button { border: 0; background: none; padding: 7px 14px; border-radius: 999px; cursor: pointer; color: var(--text-2); font-weight: 550; transition: background-color 0.22s ease, color 0.22s ease, transform 0.12s ease; }
+.seg button:active { transform: scale(0.97); }
 .seg button:hover { color: var(--text); }
 .seg button.on { background: var(--text); color: var(--bg); }
 .search { position: relative; }
@@ -687,3 +688,33 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 /* Segmented choices inside forms use the full width, evenly. */
 .modal .seg { display: flex; }
 .modal .seg button { flex: 1; text-align: center; justify-content: center; }
+
+/* ---------- Add form motion ---------- */
+.mode-pane { animation: pane-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes pane-in { from { opacity: 0; transform: translateY(6px); } }
+.type-card { transition: background-color 0.18s, border-color 0.18s, color 0.18s, transform 0.12s; }
+.type-card:active { transform: scale(0.97); }
+.type-card.on svg { animation: icon-pop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes icon-pop { 40% { transform: scale(1.18); } }
+.modal .type-grid .type-card { animation: fade-up 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.modal .type-grid .type-card:nth-child(2) { animation-delay: 30ms; }
+.modal .type-grid .type-card:nth-child(3) { animation-delay: 60ms; }
+.modal .type-grid .type-card:nth-child(4) { animation-delay: 90ms; }
+.modal .type-grid .type-card:nth-child(5) { animation-delay: 120ms; }
+.picked, .tax-preview, .name-preview, .summary { animation: pane-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.ftype { transition: background-color 0.18s, border-color 0.18s, transform 0.12s; }
+.ftype:active { transform: scale(0.97); }
+.picker-item { transition: background-color 0.15s; }
+.combo-list { animation: pane-in 0.18s ease-out both; }
+.modal-foot .btn, .modal-foot .pill-btn { transition: transform 0.12s, background-color 0.18s; }
+.modal-foot .btn:active { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) {
+  .mode-pane, .modal .type-grid .type-card, .picked, .tax-preview, .summary, .combo-list, .type-card.on svg { animation: none !important; }
+}
+.rates-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tabs { scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button { white-space: nowrap; flex: none; }
+@media (max-width: 640px) {
+  .rates-grid { grid-template-columns: 1fr; }
+}
