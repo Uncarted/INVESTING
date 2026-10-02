@@ -5,7 +5,7 @@ import { flushLive, startLive } from './lib/live';
 import { syncDividends } from './lib/dividends';
 import { detectLang, setLang, t } from './lib/i18n';
 import { cloudEnabled, signOut, useCloud } from './lib/cloud';
-import { AuthScreen, Splash } from './components/AuthScreen';
+import { AuthScreen, NewPasswordScreen, Splash } from './components/AuthScreen';
 import { Icon } from './components/Icon';
 import { Toasts, toast } from './components/ui';
 import { TransactionForm, type FormInit } from './components/TransactionForm';
@@ -142,6 +142,7 @@ export function App() {
 
   if (cloudEnabled && !cloud.ready) return <Splash />;
   if (cloudEnabled && !cloud.session) return <AuthScreen />;
+  if (cloudEnabled && cloud.recovery) return <NewPasswordScreen />;
 
   return (
     <>

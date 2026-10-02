@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { resetPassword, signIn, signInWithGoogle, signUp } from '../lib/cloud';
+import { cancelRecovery, clearAuthError, resetPassword, signIn, signInWithGoogle, signOut, signUp, updatePassword, useCloud } from '../lib/cloud';
 import { Icon } from './Icon';
 import { getLang, t } from '../lib/i18n';
 import { actions } from '../lib/store';
@@ -7,6 +7,7 @@ import { actions } from '../lib/store';
 type Tab = 'entrar' | 'criar';
 
 export function AuthScreen() {
+  const cloud = useCloud();
   const [tab, setTab] = useState<Tab>('entrar');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -103,6 +104,12 @@ export function AuthScreen() {
           />
         </label>
 
+        {cloud.authError && !error && (
+          <div className="notice" style={{ background: 'var(--neg-soft)', color: 'var(--neg)' }}>
+            <span>{cloud.authError}</span>
+            <button type="button" className="icon-btn sm" onClick={clearAuthError} aria-label={t('Fechar', 'Close')}><Icon name="x" size={13} /></button>
+          </div>
+        )}
         {error && <div className="notice" style={{ background: 'var(--neg-soft)', color: 'var(--neg)' }}>{error}</div>}
         {info && <div className="notice info">{info}</div>}
 
@@ -112,6 +119,46 @@ export function AuthScreen() {
         <p className="muted small" style={{ margin: 0, textAlign: 'center' }}>
           {t('Cada conta só enxerga os próprios dados.', 'Each account only sees its own data.')}
         </p>
+      </form>
+    </div>
+  );
+}
+
+/** Opened from the "reset password" email: choose the new password. */
+export function NewPasswordScreen() {
+  const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    if (pw.length < 6) return setError(t('A senha precisa ter pelo menos 6 caracteres.', 'The password needs at least 6 characters.'));
+    if (pw !== pw2) return setError(t('As duas senhas não são iguais.', "The two passwords don't match."));
+    setBusy(true);
+    const err = await updatePassword(pw);
+    setBusy(false);
+    if (err) setError(err);
+  }
+  return (
+    <div className="auth auth-single">
+      <form className="auth-card" onSubmit={submit}>
+        <div className="wordmark" style={{ fontSize: 34 }}>Wallet<i>.</i></div>
+        <h2 style={{ margin: '6px 0 0', fontWeight: 600, fontSize: 20 }}>{t('Crie uma nova senha', 'Choose a new password')}</h2>
+        <p className="muted small" style={{ margin: 0 }}>{t('Depois disso você já entra direto na sua carteira.', "After that you'll go straight to your portfolio.")}</p>
+        <label className="field">
+          <span>{t('Nova senha', 'New password')}</span>
+          <input className="input" type="password" autoComplete="new-password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t('mínimo 6 caracteres', 'at least 6 characters')} />
+        </label>
+        <label className="field">
+          <span>{t('Repita a nova senha', 'Repeat the new password')}</span>
+          <input className="input" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
+        </label>
+        {error && <div className="notice" style={{ background: 'var(--neg-soft)', color: 'var(--neg)' }}>{error}</div>}
+        <button className="pill-btn" type="submit" disabled={busy} style={{ width: '100%', justifyContent: 'center', height: 46 }}>
+          {busy ? t('Salvando…', 'Saving…') : t('Salvar nova senha', 'Save new password')}
+        </button>
+        <button type="button" className="link-btn" style={{ alignSelf: 'center' }} onClick={() => { cancelRecovery(); void signOut(); }}>{t('Cancelar', 'Cancel')}</button>
       </form>
     </div>
   );

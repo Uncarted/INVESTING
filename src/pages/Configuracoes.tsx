@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { actions, useData } from '../lib/store';
 import { fetchRates } from '../lib/quotes';
 import { checkKey, cleanKey } from '../lib/keys';
-import { cloudEnabled, updateName, useCloud } from '../lib/cloud';
+import { cloudEnabled, updateName, updatePassword, useCloud } from '../lib/cloud';
 import { getLang, t } from '../lib/i18n';
 import { useLive, type FeedStatus } from '../lib/live';
 import { fmtDate, money, numStr, parseNumber } from '../lib/format';
@@ -214,6 +214,24 @@ function AccountCard() {
         <label className="field">
           <span>Email</span>
           <input className="input" value={session?.user.email ?? ''} disabled />
+        </label>
+        <label className="field">
+          <span>{t('Nova senha', 'New password')}</span>
+          <input
+            className="input"
+            type="password"
+            autoComplete="new-password"
+            placeholder={t('Digite e aperte Enter para trocar', 'Type it and press Enter to change')}
+            onKeyDown={async (e) => {
+              if (e.key !== 'Enter') return;
+              const el = e.currentTarget;
+              if (el.value.length < 6) return toast(t('A senha precisa ter pelo menos 6 caracteres.', 'The password needs at least 6 characters.'));
+              const err = await updatePassword(el.value);
+              if (!err) el.value = '';
+              toast(err ?? t('Senha alterada', 'Password changed'));
+            }}
+          />
+          <span className="hint">{t('Também serve para criar uma senha se você entrou com o Google.', 'Also sets a password if you signed in with Google.')}</span>
         </label>
       </div>
     </div>

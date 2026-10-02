@@ -675,3 +675,5 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 @media (max-width: 640px) {
   .ftype-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+.auth.auth-single { grid-template-columns: minmax(0, 420px); justify-content: center; }
+.auth-card .notice .icon-btn.sm { margin-left: auto; flex: none; }

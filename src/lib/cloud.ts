@@ -31,9 +31,46 @@ interface CloudState {
   sync: SyncStatus;
   lastSavedAt?: string;
   error?: string;
+  /** Opened from a "reset password" email: ask for the new password. */
+  recovery?: boolean;
+  /** Problem reported by Supabase in the link we came back from (expired link, Google not enabled…). */
+  authError?: string;
 }
 
-let state: CloudState = { ready: !cloudEnabled, session: null, sync: 'idle' };
+let state: CloudState = { ready: !cloudEnabled, session: null, sync: 'idle', ...readAuthRedirect() };
+
+/** Supabase returns to the site with #type=recovery or #error=… in the address; read it before it's cleaned. */
+function readAuthRedirect(): Partial<CloudState> {
+  if (typeof location === 'undefined') return {};
+  const p = new URLSearchParams(location.hash.replace(/^#/, '') + '&' + location.search.replace(/^\?/, ''));
+  const out: Partial<CloudState> = {};
+  if (p.get('type') === 'recovery') out.recovery = true;
+  const desc = p.get('error_description') ?? p.get('error');
+  if (desc) {
+    const code = p.get('error_code') ?? '';
+    const d = desc.replace(/\+/g, ' ');
+    out.authError =
+      code === 'otp_expired' || /expired|invalid/i.test(d)
+        ? t('Esse link expirou ou já foi usado. Peça outro em “Esqueci a senha” e abra o email mais recente. (Se você usa Hotmail/Outlook, o próprio email às vezes “abre” o link antes de você — peça outro e clique logo.)', 'This link expired or was already used. Request another one with “Forgot password” and open the newest email. (Hotmail/Outlook sometimes opens links before you do — request a new one and click it right away.)')
+        : /provider is not enabled|unsupported provider/i.test(d)
+          ? t('O login com Google ainda não foi ativado no Supabase.', "Google sign-in isn't enabled in Supabase yet.")
+          : d;
+    if (location.hash.includes('error')) history.replaceState(null, '', location.pathname + location.search.replace(/[?&]error[^#]*/, ''));
+  }
+  return out;
+}
+
+export function clearAuthError() {
+  set({ authError: undefined });
+}
+
+/** New password after a reset link (or from Ajustes). */
+export async function updatePassword(password: string) {
+  const { error } = await supabase!.auth.updateUser({ password });
+  if (!error) set({ recovery: false });
+  return error ? translate(error.message) : null;
+}
+export const cancelRecovery = () => set({ recovery: false });
 const listeners = new Set<() => void>();
 const set = (patch: Partial<CloudState>) => {
   state = { ...state, ...patch };
@@ -55,7 +92,10 @@ export function useCloud(): CloudState {
 
 if (supabase) {
   supabase.auth.getSession().then(({ data }) => handleSession(data.session));
-  supabase.auth.onAuthStateChange((_event, session) => handleSession(session));
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') set({ recovery: true });
+    handleSession(session);
+  });
 }
 
 let currentUser: string | null = null;
@@ -134,6 +174,7 @@ function translate(msg: string) {
   if (m.includes('already registered')) return t('Esse email já tem conta — use “Entrar”.', 'This email already has an account — use “Sign in”.');
   if (m.includes('password should be')) return t('A senha precisa ter pelo menos 6 caracteres.', 'The password needs at least 6 characters.');
   if (m.includes('provider is not enabled')) return t('Login com Google ainda não foi ativado no Supabase.', "Google sign-in isn't enabled in Supabase yet.");
+  if (m.includes('same as the old') || m.includes('should be different')) return t('A nova senha precisa ser diferente da antiga.', 'The new password must be different from the old one.');
   if (m.includes('rate limit')) return t('Muitas tentativas. Espere um pouco e tente de novo.', 'Too many attempts. Wait a bit and try again.');
   return msg;
 }
