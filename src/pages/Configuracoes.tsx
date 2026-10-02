@@ -78,6 +78,8 @@ export function Configuracoes() {
         <p className="muted small" style={{ margin: 0 }}>{t('O valor da renda fixa é uma estimativa bruta. Para precisão, informe o saldo do banco no detalhe de cada investimento.', "Fixed-income values are gross estimates. For exact values, enter your bank balance in each investment's details.")}</p>
       </div>
 
+      {/* With the site's shared keys everything is automatic — nothing to configure. */}
+      {!sharedKeys && (
       <div className="card card-pad stack">
         <div className="row">
           <h2 style={{ fontSize: 15, margin: 0 }}>{t('Cotações ao vivo', 'Live quotes')}</h2>
@@ -92,12 +94,6 @@ export function Configuracoes() {
           <Feed name={t('Cripto', 'Crypto')} detail={t('Binance · tempo real, sem cadastro', 'Binance · real time, no signup')} status={live.status.crypto} />
           <Feed name={t('Dólar e euro', 'Dollar and euro')} detail={`AwesomeAPI · US$ 1 = ${money(s.fx.USD, { always: true })} · € 1 = ${money(s.fx.EUR, { always: true })}`} status={live.status.fx} />
         </div>
-        {sharedKeys && (
-          <div className="notice info">
-            <Icon name="check" />
-            <span>{t('Já está tudo conectado: o Walleti fornece as chaves de cotação para você. Só preencha abaixo se quiser usar uma chave sua (ela passa a ter prioridade).', "You're all set: Walleti provides the quote keys for you. Only fill these in if you want to use your own key (it then takes priority).")}</span>
-          </div>
-        )}
         <KeyField
           label={t('Finnhub — ações dos EUA ao vivo (AMD, TTWO, AAPL…)', 'Finnhub — live US stocks (AMD, TTWO, AAPL…)')}
           kind="finnhub"
@@ -121,6 +117,7 @@ export function Configuracoes() {
         />
         <p className="muted small" style={{ margin: 0 }}>{cloud ? t('As chaves ficam salvas na sua conta — valem em qualquer computador.', 'Keys are saved to your account — they work on any computer.') : t('As chaves ficam salvas neste navegador.', 'Keys are saved in this browser.')}</p>
       </div>
+      )}
 
       <div className="card card-pad stack">
         <h2 style={{ fontSize: 15, margin: 0 }}>{t('Aparência', 'Appearance')}</h2>
