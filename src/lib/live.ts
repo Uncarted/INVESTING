@@ -1,3 +1,4 @@
+import { apiKey, SHARED_KEY } from './cloud';
 import { useSyncExternalStore } from 'react';
 import type { Asset, Settings } from './types';
 import { actions } from './store';
@@ -105,7 +106,7 @@ export function startLive(assets: Asset[], s: Settings) {
   const us = uniq(assets.filter(isUS).map((a) => a.ticker));
   const b3 = uniq(assets.filter((a) => B3.has(a.cls) && currencyOf(a) === 'BRL').map((a) => a.ticker));
   const crypto = uniq(assets.filter((a) => a.cls === 'CRIPTO').map((a) => a.ticker));
-  const next = JSON.stringify([us, b3, crypto, s.finnhubToken, s.brapiToken, s.livePrices]);
+  const next = JSON.stringify([us, b3, crypto, apiKey(s, 'finnhub'), apiKey(s, 'brapi'), s.livePrices]);
   if (next === key) return;
   stopLive();
   key = next;
@@ -113,9 +114,9 @@ export function startLive(assets: Asset[], s: Settings) {
 
   startFx();
   // Feeds only run when you hold something from that market; otherwise show "ready".
-  if (us.length) startUS(us, s.finnhubToken);
-  else setStatus('us', s.finnhubToken ? 'ready' : 'needs-key');
-  if (b3.length) startB3(b3, s.brapiToken);
+  if (us.length) startUS(us, apiKey(s, 'finnhub'));
+  else setStatus('us', apiKey(s, 'finnhub') ? 'ready' : 'needs-key');
+  if (b3.length) startB3(b3, apiKey(s, 'brapi'));
   else setStatus('b3', 'ready');
   if (crypto.length) startCrypto(crypto);
   else setStatus('crypto', 'ready');
@@ -197,6 +198,12 @@ function startUS(tickers: string[], token?: string) {
     }
   };
   snapshot();
+  // Shared key: no live socket (it would expose the key) — refresh every minute through the server instead.
+  if (token === SHARED_KEY) {
+    timers.push(window.setInterval(snapshot, 60000));
+    setStatus('us', 'polling');
+    return;
+  }
   timers.push(window.setInterval(snapshot, 5 * 60000));
 
   let retry = 0;
@@ -313,9 +320,9 @@ export async function searchSymbols(q: string, s: Settings): Promise<SymbolHit[]
   if (query.length < 2) return [];
   const out: SymbolHit[] = [];
   const tasks: Promise<void>[] = [];
-  if (s.finnhubToken) {
+  if (apiKey(s, 'finnhub')) {
     tasks.push(
-      getJSON(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(query)}&exchange=US&token=${s.finnhubToken}`)
+      getJSON(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(query)}&exchange=US&token=${apiKey(s, 'finnhub')}`)
         .then((j) => {
           for (const r of (j?.result ?? []).slice(0, 8)) {
             if (!r.symbol || r.symbol.includes('.')) continue;
@@ -326,7 +333,7 @@ export async function searchSymbols(q: string, s: Settings): Promise<SymbolHit[]
     );
   }
   tasks.push(
-    getJSON(`https://brapi.dev/api/available?search=${encodeURIComponent(query)}${s.brapiToken ? `&token=${s.brapiToken}` : ''}`)
+    getJSON(`https://brapi.dev/api/available?search=${encodeURIComponent(query)}${apiKey(s, 'brapi') ? `&token=${apiKey(s, 'brapi')}` : ''}`)
       .then((j) => {
         for (const t of (j?.stocks ?? []).slice(0, 6)) out.push({ symbol: t, description: 'B3', market: 'B3' });
       })

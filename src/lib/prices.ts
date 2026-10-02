@@ -1,3 +1,4 @@
+import { apiKey } from './cloud';
 import type { Settings } from './types';
 import { today } from './format';
 import { t } from './i18n';
@@ -17,7 +18,7 @@ export type PriceResult =
 const cache = new Map<string, Promise<PriceResult>>();
 
 export function priceOn(symbol: string, market: Market, date: string, s: Settings): Promise<PriceResult> {
-  const key = [symbol, market, date, s.finnhubToken ?? '', s.brapiToken ?? '', s.twelveDataToken ?? ''].join('|');
+  const key = [symbol, market, date, apiKey(s, 'finnhub') ?? '', apiKey(s, 'brapi') ?? '', apiKey(s, 'twelve') ?? ''].join('|');
   let p = cache.get(key);
   if (!p) {
     p = lookup(symbol.toUpperCase(), market, date, s).catch(() => ({ ok: false, reason: 'network' }) as PriceResult);
@@ -64,7 +65,7 @@ function brapiRange(date: string) {
 }
 
 async function b3(symbol: string, date: string, isToday: boolean, s: Settings): Promise<PriceResult> {
-  const auth = s.brapiToken ? `&token=${encodeURIComponent(s.brapiToken)}` : '';
+  const auth = apiKey(s, 'brapi') ? `&token=${encodeURIComponent(apiKey(s, 'brapi') ?? '')}` : '';
   try {
     if (isToday) {
       const j = await getJSON(`https://brapi.dev/api/quote/${encodeURIComponent(symbol)}?${auth.slice(1)}`);
@@ -83,16 +84,16 @@ async function b3(symbol: string, date: string, isToday: boolean, s: Settings): 
 }
 
 async function us(symbol: string, date: string, isToday: boolean, s: Settings): Promise<PriceResult> {
-  if (isToday && s.finnhubToken) {
+  if (isToday && apiKey(s, 'finnhub')) {
     try {
-      const j = await getJSON(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${s.finnhubToken}`);
+      const j = await getJSON(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${apiKey(s, 'finnhub')}`);
       if (j?.c > 0) return ok(j.c, date, 'Finnhub', date);
     } catch {
       /* fall through */
     }
   }
-  if (s.twelveDataToken) {
-    const k = `apikey=${encodeURIComponent(s.twelveDataToken)}`;
+  if (apiKey(s, 'twelve')) {
+    const k = `apikey=${encodeURIComponent(apiKey(s, 'twelve') ?? '')}`;
     if (isToday) {
       const j = await getJSON(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(symbol)}&${k}`);
       if (Number(j?.price) > 0) return ok(Number(j.price), date, 'Twelve Data', date);
@@ -104,12 +105,12 @@ async function us(symbol: string, date: string, isToday: boolean, s: Settings): 
     if (v) return ok(Number(v.close), String(v.datetime).slice(0, 10), 'Twelve Data', date);
     return { ok: false, reason: 'unavailable' };
   }
-  if (!isToday && s.finnhubToken) {
+  if (!isToday && apiKey(s, 'finnhub')) {
     // Finnhub candles are premium on most accounts, but try.
     try {
       const from = Math.floor(Date.parse(date + 'T00:00:00Z') / 1000) - 5 * 86400;
       const to = Math.floor(Date.parse(date + 'T23:59:59Z') / 1000);
-      const j = await getJSON(`https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${from}&to=${to}&token=${s.finnhubToken}`);
+      const j = await getJSON(`https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${from}&to=${to}&token=${apiKey(s, 'finnhub')}`);
       if (j?.s === 'ok' && j.c?.length) return ok(j.c[j.c.length - 1], toISO(j.t[j.t.length - 1] * 1000), 'Finnhub', date);
     } catch {
       /* premium endpoint */

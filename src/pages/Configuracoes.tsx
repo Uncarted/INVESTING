@@ -16,6 +16,7 @@ export function Configuracoes() {
   const live = useLive();
   const cloud = cloudEnabled;
   const s = data.settings;
+  const { sharedKeys } = useCloud();
   const [loading, setLoading] = useState(false);
 
   const rateField = (label: string, key: 'cdiRate' | 'ipcaRate' | 'selicRate', hint: string) => (
@@ -91,6 +92,12 @@ export function Configuracoes() {
           <Feed name={t('Cripto', 'Crypto')} detail={t('Binance · tempo real, sem cadastro', 'Binance · real time, no signup')} status={live.status.crypto} />
           <Feed name={t('Dólar e euro', 'Dollar and euro')} detail={`AwesomeAPI · US$ 1 = ${money(s.fx.USD, { always: true })} · € 1 = ${money(s.fx.EUR, { always: true })}`} status={live.status.fx} />
         </div>
+        {sharedKeys && (
+          <div className="notice info">
+            <Icon name="check" />
+            <span>{t('Já está tudo conectado: o Walleti fornece as chaves de cotação para você. Só preencha abaixo se quiser usar uma chave sua (ela passa a ter prioridade).', "You're all set: Walleti provides the quote keys for you. Only fill these in if you want to use your own key (it then takes priority).")}</span>
+          </div>
+        )}
         <KeyField
           label={t('Finnhub — ações dos EUA ao vivo (AMD, TTWO, AAPL…)', 'Finnhub — live US stocks (AMD, TTWO, AAPL…)')}
           kind="finnhub"

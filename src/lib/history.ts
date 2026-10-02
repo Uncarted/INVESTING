@@ -1,3 +1,4 @@
+import { apiKey } from './cloud';
 import { useEffect, useMemo, useState } from 'react';
 import type { Asset, Settings, Transaction } from './types';
 import { isMarketClass } from './types';
@@ -79,7 +80,7 @@ async function fetchBars(a: Asset, from: string, grain: Grain, s: Settings): Pro
     return out;
   }
   if (kind === 'B3') {
-    const auth = s.brapiToken ? `&token=${encodeURIComponent(s.brapiToken)}` : '';
+    const auth = apiKey(s, 'brapi') ? `&token=${encodeURIComponent(apiKey(s, 'brapi') ?? '')}` : '';
     const days = (Date.now() - midday(from)) / DAY;
     const [range, interval] =
       grain === 'intraday' ? ['1d', '5m'] : grain === 'hourly' ? ['5d', '1h']
@@ -90,8 +91,8 @@ async function fetchBars(a: Asset, from: string, grain: Grain, s: Settings): Pro
       .filter((h) => h.close > 0)
       .map((h) => ({ t: grain === 'daily' ? midday(iso(h.date * 1000)) : h.date * 1000, close: h.close }));
   }
-  if (!s.twelveDataToken) return [];
-  const k = `apikey=${encodeURIComponent(s.twelveDataToken)}`;
+  if (!apiKey(s, 'twelve')) return [];
+  const k = `apikey=${encodeURIComponent(apiKey(s, 'twelve') ?? '')}`;
   const q =
     grain === 'intraday' ? 'interval=5min&outputsize=100'
     : grain === 'hourly' ? 'interval=1h&outputsize=60'
@@ -236,7 +237,7 @@ export function usePortfolioHistory(
   const [bars, setBars] = useState<Map<string, Bar[]>>(new Map());
   const [fx, setFx] = useState<{ USD: Bar[]; EUR: Bar[] }>({ USD: [], EUR: [] });
   const [pending, setPending] = useState(0);
-  const keys = `${settings.brapiToken}|${settings.twelveDataToken}`;
+  const keys = `${apiKey(settings, 'brapi')}|${apiKey(settings, 'twelve')}`;
 
   useEffect(() => {
     if (range === '1D') return;
@@ -269,7 +270,7 @@ export function useAssetSeries(asset: Asset | undefined, range: Range, settings:
   const [state, setState] = useState<{ key: string; bars: Bar[] }>({ key: '', bars: [] });
   const from = rangeStart(range);
   const grain = grainOf(range);
-  const key = asset ? `${asset.id}:${asset.ticker}:${range}:${settings.brapiToken}|${settings.twelveDataToken}` : '';
+  const key = asset ? `${asset.id}:${asset.ticker}:${range}:${apiKey(settings, 'brapi')}|${apiKey(settings, 'twelve')}` : '';
   useEffect(() => {
     if (!asset) return;
     let alive = true;

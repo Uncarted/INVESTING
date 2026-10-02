@@ -1,3 +1,4 @@
+import { apiKey } from '../lib/cloud';
 import { useState } from 'react';
 import type { Asset, Currency, Settings, Transaction } from '../lib/types';
 import { useAssetSeries, type Range } from '../lib/history';
@@ -47,7 +48,7 @@ export function AssetChart({ asset, settings, txs, avg, cur, quantity }: { asset
   const hi = Math.max(...pts.map((p) => p.v));
   const showAvg = quantity > 0 && avg > 0 && pts.length > 1 && avg > lo - (hi - lo) * 0.6 && avg < hi + (hi - lo) * 0.6;
 
-  const noKey = cur !== 'BRL' && asset.cls !== 'CRIPTO' && !settings.twelveDataToken;
+  const noKey = cur !== 'BRL' && asset.cls !== 'CRIPTO' && !apiKey(settings, 'twelve');
 
   return (
     <div className="achart">

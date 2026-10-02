@@ -1,3 +1,4 @@
+import { apiKey } from './cloud';
 import { useSyncExternalStore } from 'react';
 import type { Asset, Settings, Transaction, TxType } from './types';
 import { INCOME_TYPES } from './types';
@@ -63,7 +64,7 @@ function sharesOn(asset: Asset, list: Transaction[], date: string, s: Settings) 
 }
 
 async function b3Payments(a: Asset, s: Settings) {
-  const auth = s.brapiToken ? `&token=${encodeURIComponent(s.brapiToken)}` : '';
+  const auth = apiKey(s, 'brapi') ? `&token=${encodeURIComponent(apiKey(s, 'brapi') ?? '')}` : '';
   const j = await getJSON(`https://brapi.dev/api/quote/${encodeURIComponent(a.ticker.toUpperCase())}?dividends=true${auth}`);
   const list: { paymentDate?: string; lastDatePrior?: string; rate?: number; label?: string }[] = j?.results?.[0]?.dividendsData?.cashDividends;
   if (!Array.isArray(list)) return null;
@@ -77,8 +78,8 @@ async function b3Payments(a: Asset, s: Settings) {
 }
 
 async function usPayments(a: Asset, s: Settings, from: string) {
-  if (!s.twelveDataToken) return null;
-  const j = await getJSON(`https://api.twelvedata.com/dividends?symbol=${encodeURIComponent(a.ticker.toUpperCase())}&start_date=${from}&apikey=${encodeURIComponent(s.twelveDataToken)}`);
+  if (!apiKey(s, 'twelve')) return null;
+  const j = await getJSON(`https://api.twelvedata.com/dividends?symbol=${encodeURIComponent(a.ticker.toUpperCase())}&start_date=${from}&apikey=${encodeURIComponent(apiKey(s, 'twelve') ?? '')}`);
   const list: { ex_date?: string; amount?: number | string }[] = j?.dividends;
   if (!Array.isArray(list)) return null;
   return list
@@ -125,7 +126,7 @@ export async function findDividends(): Promise<{ found: FoundIncome[]; notes: st
       continue;
     }
     if (!pays) {
-      if (isUS && !settings.twelveDataToken) notes.add(t('Proventos dos EUA: adicione a chave da Twelve Data em Ajustes.', 'US dividends: add your Twelve Data key in Settings.'));
+      if (isUS && !apiKey(settings, 'twelve')) notes.add(t('Proventos dos EUA: adicione a chave da Twelve Data em Ajustes.', 'US dividends: add your Twelve Data key in Settings.'));
       if (isB3) notes.add(t('A brapi não enviou proventos — o plano grátis pode não incluir esse dado. A Movimentação da B3 (Importar) traz todos.', "brapi didn't return dividends — the free plan may not include them. The B3 Movimentação statement (Import) has them all."));
       continue;
     }

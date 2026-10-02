@@ -35,6 +35,8 @@ interface CloudState {
   recovery?: boolean;
   /** Problem reported by Supabase in the link we came back from (expired link, Google not enabled…). */
   authError?: string;
+  /** Providers the site shares keys for ("finnhub,brapi,twelve"); empty when none. */
+  sharedKeys?: string;
 }
 
 let state: CloudState = { ready: !cloudEnabled, session: null, sync: 'idle', ...readAuthRedirect() };
@@ -120,6 +122,7 @@ async function handleSession(session: Session | null) {
   set({ session, ready: false, sync: 'loading' });
   await startSync(uid);
   set({ ready: true });
+  void loadShared();
 }
 
 const redirectTo = () => (location.protocol.startsWith('http') ? location.origin + location.pathname : undefined);
@@ -331,4 +334,46 @@ export async function aiReadDocument(text: string): Promise<{ ok: true; result: 
   // Show the technical reason too, so problems can be fixed.
   const tech = [code, status ? `HTTP ${status}` : '', detail].filter(Boolean).join(' · ').slice(0, 400);
   return { ok: false, reason: tech && !reasons[code] ? `${base} (${tech})` : base };
+}
+
+// ---------------------------------------------------------------------------
+// Shared market-data keys: signed-in users without their own key use the site owner's keys
+// through the "quotes" Edge Function. URLs carry SHARED_KEY where the key goes; fetch() below
+// sends those to the function, which swaps in the real key server-side.
+
+export const SHARED_KEY = '__shared__';
+type Provider = 'finnhub' | 'brapi' | 'twelve';
+let shared: Record<Provider, boolean> = { finnhub: false, brapi: false, twelve: false };
+
+/** The user's own key, else the shared placeholder when the site provides one. */
+export function apiKey(s: { finnhubToken?: string; brapiToken?: string; twelveDataToken?: string }, p: Provider): string | undefined {
+  const own = p === 'finnhub' ? s.finnhubToken : p === 'brapi' ? s.brapiToken : s.twelveDataToken;
+  return own || (shared[p] ? SHARED_KEY : undefined);
+}
+export const usesSharedKey = (s: { finnhubToken?: string; brapiToken?: string; twelveDataToken?: string }, p: Provider) => apiKey(s, p) === SHARED_KEY;
+
+async function loadShared() {
+  if (!supabase || !state.session) return;
+  try {
+    const { data } = await supabase.functions.invoke('quotes', { body: { check: true } });
+    if (data && typeof data === 'object' && 'finnhub' in data) {
+      shared = { finnhub: !!data.finnhub, brapi: !!data.brapi, twelve: !!data.twelve };
+      set({ sharedKeys: Object.values(shared).some(Boolean) ? (Object.keys(shared) as Provider[]).filter((k) => shared[k]).join(',') : '' });
+    }
+  } catch {
+    /* function not installed: everyone uses their own keys */
+  }
+}
+
+if (typeof window !== 'undefined' && supabase) {
+  const original = window.fetch.bind(window);
+  window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (!href.includes(SHARED_KEY)) return original(input, init);
+    return original(`${url}/functions/v1/quotes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: anon!, Authorization: `Bearer ${state.session?.access_token ?? anon}` },
+      body: JSON.stringify({ url: href }),
+    });
+  };
 }

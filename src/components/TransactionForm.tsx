@@ -1,3 +1,4 @@
+import { apiKey } from '../lib/cloud';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, toast } from './ui';
 import { Icon } from './Icon';
@@ -235,7 +236,7 @@ export function TransactionForm({ init, onClose }: { init?: FormInit; onClose: (
       clearTimeout(id);
     };
     // Live quotes are read once per lookup on purpose, not on every tick.
-  }, [symbolForPrice, marketForPrice, date, refetch, data.settings.finnhubToken, data.settings.brapiToken, data.settings.twelveDataToken]);
+  }, [symbolForPrice, marketForPrice, date, refetch, apiKey(data.settings, 'finnhub'), apiKey(data.settings, 'brapi'), apiKey(data.settings, 'twelve')]);
 
   const held = useMemo(() => {
     if (!existing || !isMarketClass(existing.cls)) return null;

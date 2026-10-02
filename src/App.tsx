@@ -68,7 +68,7 @@ export function App() {
   const s = data.settings;
   useEffect(() => {
     startLive(data.assets, s);
-  }, [data.assets, s]);
+  }, [data.assets, s, cloud.sharedKeys]);
   // Dividends: look for new payments once a day, a few seconds after the portfolio loads.
   const canSync = (!cloudEnabled || (cloud.ready && !!cloud.session)) && data.assets.length > 0;
   const uidKey = cloud.session?.user.id ?? 'local';
