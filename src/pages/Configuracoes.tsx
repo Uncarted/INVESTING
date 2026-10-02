@@ -16,7 +16,7 @@ export function Configuracoes() {
   const live = useLive();
   const cloud = cloudEnabled;
   const s = data.settings;
-  const { sharedKeys } = useCloud();
+  const { sharedKeys, sharedStatus } = useCloud();
   const [loading, setLoading] = useState(false);
 
   const rateField = (label: string, key: 'cdiRate' | 'ipcaRate' | 'selicRate', hint: string) => (
@@ -88,6 +88,7 @@ export function Configuracoes() {
             <input type="checkbox" checked={s.livePrices} onChange={(e) => actions.updateSettings({ livePrices: e.target.checked })} /> {t('Ligado', 'On')}
           </label>
         </div>
+        {cloud && sharedStatus && sharedStatus !== 'ok' && <div className="notice"><Icon name="alert" /><span>{sharedStatus}</span></div>}
         <div className="feeds">
           <Feed name={t('Ações dos EUA e exterior', 'US & foreign stocks')} detail={t('Finnhub · tempo real', 'Finnhub · real time')} status={live.status.us} />
           <Feed name={t('B3 — ações, FIIs, ETFs, BDRs', 'B3 — stocks, REITs, ETFs, BDRs')} detail={t('brapi · a cada minuto', 'brapi · every minute')} status={live.status.b3} />

@@ -37,6 +37,8 @@ interface CloudState {
   authError?: string;
   /** Providers the site shares keys for ("finnhub,brapi,twelve"); empty when none. */
   sharedKeys?: string;
+  /** Why shared keys aren't active (shown in Ajustes to help set them up). */
+  sharedStatus?: string;
 }
 
 let state: CloudState = { ready: !cloudEnabled, session: null, sync: 'idle', ...readAuthRedirect() };
@@ -355,13 +357,27 @@ export const usesSharedKey = (s: { finnhubToken?: string; brapiToken?: string; t
 async function loadShared() {
   if (!supabase || !state.session) return;
   try {
-    const { data } = await supabase.functions.invoke('quotes', { body: { check: true } });
+    const { data, error } = await supabase.functions.invoke('quotes', { body: { check: true } });
     if (data && typeof data === 'object' && 'finnhub' in data) {
       shared = { finnhub: !!data.finnhub, brapi: !!data.brapi, twelve: !!data.twelve };
-      set({ sharedKeys: Object.values(shared).some(Boolean) ? (Object.keys(shared) as Provider[]).filter((k) => shared[k]).join(',') : '' });
+      const on = (Object.keys(shared) as Provider[]).filter((k) => shared[k]);
+      set({
+        sharedKeys: on.join(','),
+        sharedStatus: on.length === 3 ? 'ok' : t(`A função "quotes" responde, mas faltam segredos: ${(['finnhub', 'brapi', 'twelve'] as Provider[]).filter((k) => !shared[k]).map((k) => ({ finnhub: 'FINNHUB_KEY', brapi: 'BRAPI_TOKEN', twelve: 'TWELVEDATA_KEY' })[k]).join(', ')}.`, `The "quotes" function answers, but secrets are missing: ${(['finnhub', 'brapi', 'twelve'] as Provider[]).filter((k) => !shared[k]).map((k) => ({ finnhub: 'FINNHUB_KEY', brapi: 'BRAPI_TOKEN', twelve: 'TWELVEDATA_KEY' })[k]).join(', ')}.`),
+      });
+    } else {
+      const ctx = (error as { context?: Response } | null)?.context;
+      const status = ctx?.status;
+      const body = ctx?.text ? await ctx.text().catch(() => '') : '';
+      set({
+        sharedStatus:
+          status === 404
+            ? t('A função "quotes" não foi encontrada no Supabase (confira o nome exato: quotes).', 'The "quotes" function was not found in Supabase (check the exact name: quotes).')
+            : t(`A função "quotes" respondeu com erro ${status ?? ''} ${body.slice(0, 160)}`, `The "quotes" function returned error ${status ?? ''} ${body.slice(0, 160)}`),
+      });
     }
-  } catch {
-    /* function not installed: everyone uses their own keys */
+  } catch (e) {
+    set({ sharedStatus: t(`Não foi possível falar com a função "quotes": ${String(e).slice(0, 120)}`, `Couldn't reach the "quotes" function: ${String(e).slice(0, 120)}`) });
   }
 }
 
