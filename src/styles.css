@@ -137,11 +137,11 @@ a { color: var(--accent-text); }
 .wordmark i { color: var(--accent); font-style: normal; }
 .wordmark { display: inline-flex; align-items: baseline; }
 /* Upside-down "i": the stem hangs from the top, the (lime) dot sits on the baseline like a period. */
-.wordmark { font-family: 'Geist', system-ui, sans-serif; font-weight: 650; letter-spacing: -0.045em; font-size: 26px; }
-/* A straight stem with the lime dot at the bottom: the "i" of Walleti, upside down. */
-.wm-i { display: inline-block; position: relative; width: 0.24em; height: 0.72em; margin-left: 0.04em; }
-.wm-i::before { content: ''; position: absolute; left: 50%; top: 0; height: 0.48em; width: 0.105em; transform: translateX(-50%); background: currentColor; border-radius: 0.02em; }
-.wm-i::after { content: ''; position: absolute; left: 50%; bottom: 0; width: 0.135em; height: 0.135em; transform: translateX(-50%); border-radius: 50%; background: var(--accent); }
+/* Upside-down "i" drawn to match the serif: thin stem with a small serif on top, lime dot on the baseline. */
+.wm-i { display: inline-block; position: relative; width: 0.24em; height: 0.66em; margin-left: 0.01em; }
+.wm-i::before { content: ''; position: absolute; left: 50%; top: 0.2em; height: 0.31em; width: 0.062em; transform: translateX(-50%); background: currentColor; border-radius: 0 0 0.03em 0.03em; box-shadow: 0 0 0 0 currentColor; }
+.wm-i > i { position: absolute; left: 50%; top: 0.2em; width: 0.2em; height: 0.035em; transform: translateX(-50%); background: currentColor; }
+.wm-i::after { content: ''; position: absolute; left: 50%; bottom: 0; width: 0.13em; height: 0.13em; transform: translateX(-50%); border-radius: 50%; background: var(--accent); }
 .pill-btn {
   display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px 0 14px; border-radius: 999px;
   border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; transition: transform 0.1s, filter 0.15s;
