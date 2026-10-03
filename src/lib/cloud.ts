@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
-import { LOCAL_KEY, applyRemote, getData, onEdit, peekStorage, switchStorage } from './store';
+import { LOCAL_KEY, applyRemote, getData, onEdit, switchStorage } from './store';
 import type { Data } from './types';
 import { t } from './i18n';
 
@@ -207,13 +207,12 @@ async function startSync(uid: string) {
     applyRemote(row.data as Data);
     set({ sync: 'saved', lastSavedAt: row.updated_at });
   } else {
-    // First login: bring along whatever was saved on this computer before accounts existed.
-    const local = peekStorage(LOCAL_KEY);
-    const cached = getData();
-    const initial = cached.assets.length ? cached : local && local.assets.length ? local : cached;
-    if (initial !== cached) applyRemote(initial);
-    await save(initial);
-    if (initial === local) localStorage.removeItem(LOCAL_KEY);
+    // First login: a brand-new account always starts empty. (Never adopt data left in this
+    // browser by someone else or by the old no-account version.)
+    const empty = { ...getData(), assets: [], transactions: [] };
+    applyRemote(empty);
+    await save(empty);
+    localStorage.removeItem(LOCAL_KEY);
   }
 
   unsubscribe = onEdit(() => {

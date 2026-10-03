@@ -78,7 +78,7 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
         <div className="row" style={{ justifyContent: 'center', flexWrap: 'wrap' }}>
           <button className="pill-btn" onClick={onAdd}><Icon name="plus" /> {t('Adicionar investimento', 'Add an investment')}</button>
           <button className="btn" style={{ height: 40 }} onClick={() => open('importar')}><Icon name="upload" size={16} /> {t('Importar da B3', 'Import from B3')}</button>
-          <button className="btn ghost" style={{ height: 40 }} onClick={() => actions.replaceAll({ ...sampleData(), settings: data.settings }, 'Exemplo carregado')}>
+          <button className="btn ghost" style={{ height: 40 }} onClick={() => actions.replaceAll({ ...sampleData(), settings: { ...data.settings, sample: true } }, 'Exemplo carregado')}>
             {t('Ver com dados de exemplo', 'Try it with sample data')}
           </button>
         </div>
@@ -156,6 +156,14 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
 
   return (
     <>
+      {(data.settings.sample || data.assets.some((a) => a.id.startsWith('s-'))) && (
+        <div className="sample-banner">
+          <span>{t('Você está vendo uma carteira de exemplo — os valores são fictícios.', "You're looking at an example portfolio — the numbers are made up.")}</span>
+          <button className="btn sm" onClick={() => actions.replaceAll({ ...data, assets: data.assets.filter((a) => !a.id.startsWith('s-')), transactions: data.transactions.filter((x) => !x.assetId.startsWith('s-')), settings: { ...data.settings, sample: false } }, 'Exemplo apagado')}>
+            {t('Apagar exemplo e começar do zero', 'Clear example and start fresh')}
+          </button>
+        </div>
+      )}
       <div className="greeting">{greeting(firstName, dayChange, total)}</div>
       <section className="hero" style={{ paddingTop: 8 }}>
         <div className="reveal">

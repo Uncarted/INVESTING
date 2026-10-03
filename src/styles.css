@@ -734,3 +734,5 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
   .auto-h { transition: none; }
   .modal, .overlay, .overlay.closing, .overlay.closing .modal { animation: none !important; }
 }
+.sample-banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 10px; padding: 10px 14px; border-radius: 14px; background: var(--warn-bg); color: var(--warn-ink); font-size: 13.5px; font-weight: 550; animation: pane-in 0.35s ease-out both; }
+.sample-banner .btn { margin-left: auto; }

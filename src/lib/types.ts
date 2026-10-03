@@ -165,6 +165,8 @@ export interface Settings {
   autoDividends?: boolean;
   /** Last automatic dividend check (ISO date). */
   dividendsCheckedAt?: string;
+  /** The portfolio is the built-in example (fake data). */
+  sample?: boolean;
   lastBackupAt?: string;
 }
 

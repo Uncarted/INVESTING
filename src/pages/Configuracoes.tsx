@@ -145,7 +145,7 @@ export function Configuracoes() {
             <Icon name="download" size={16} /> {t('Salvar backup', 'Save backup')}
           </button>
           {!data.assets.length && (
-            <button className="btn" onClick={() => { actions.replaceAll({ ...sampleData(), settings: s }, 'Exemplo carregado'); toast(t('Dados de exemplo carregados', 'Sample data loaded'), { undo: true }); }}>
+            <button className="btn" onClick={() => { actions.replaceAll({ ...sampleData(), settings: { ...s, sample: true } }, 'Exemplo carregado'); toast(t('Dados de exemplo carregados', 'Sample data loaded'), { undo: true }); }}>
               {t('Carregar dados de exemplo', 'Load sample data')}
             </button>
           )}
