@@ -12,6 +12,8 @@ const KEYS: Record<string, string | undefined> = {
   'api.twelvedata.com': Deno.env.get('TWELVEDATA_KEY'),
 };
 const SHARED = '__shared__';
+// Keyless sources the browser can't call directly (no CORS): Yahoo Finance, for stocks worldwide.
+const OPEN = new Set(['query1.finance.yahoo.com', 'query2.finance.yahoo.com']);
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -41,20 +43,22 @@ Deno.serve(async (req) => {
   try {
     if (!(await signedIn(req))) return json({ error: 'not-signed-in' }, 401);
     const body = await req.json();
-    if (body?.check) return json({ finnhub: !!KEYS['finnhub.io'], brapi: !!KEYS['brapi.dev'], twelve: !!KEYS['api.twelvedata.com'] });
+    if (body?.check) return json({ finnhub: !!KEYS['finnhub.io'], brapi: !!KEYS['brapi.dev'], twelve: !!KEYS['api.twelvedata.com'], yahoo: true });
 
     const url = new URL(String(body?.url ?? ''));
+    const open = OPEN.has(url.hostname);
     const key = KEYS[url.hostname];
-    if (url.protocol !== 'https:' || !key) return json({ error: 'not-allowed' }, 400);
-    const target = url.toString().split(SHARED).join(encodeURIComponent(key));
+    if (url.protocol !== 'https:' || (!key && !open)) return json({ error: 'not-allowed' }, 400);
+    if (open) url.searchParams.delete('_k');
+    const target = open ? url.toString() : url.toString().split(SHARED).join(encodeURIComponent(key!));
 
     // Prices change often; history, search and dividends don't.
-    const slow = /time_series|dividends|range=|candle|search|available|symbol_search/.test(url.search + url.pathname);
+    const slow = /time_series|dividends|range=|candle|search|available|symbol_search|v8\/finance|v1\/finance/.test(url.search + url.pathname);
     const ttl = slow ? 6 * 3600_000 : 60_000;
     const hit = cache.get(url.toString());
     if (hit && Date.now() - hit.at < ttl) return new Response(hit.body, { status: hit.status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-    const r = await fetch(target);
+    const r = await fetch(target, open ? { headers: { 'User-Agent': 'Mozilla/5.0 (Walleti)' } } : undefined);
     const text = await r.text();
     if (r.ok) {
       cache.set(url.toString(), { at: Date.now(), status: r.status, body: text });

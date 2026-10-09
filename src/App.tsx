@@ -17,14 +17,16 @@ import { Proventos } from './pages/Proventos';
 import { ImpostoRenda } from './pages/ImpostoRenda';
 import { Importar } from './pages/Importar';
 import { Configuracoes } from './pages/Configuracoes';
+import { Simular } from './pages/Simular';
 
-const PANEL_IDS = ['lancamentos', 'proventos', 'ir', 'importar', 'config'] as const;
+const PANEL_IDS = ['lancamentos', 'proventos', 'ir', 'simular', 'importar', 'config'] as const;
 type PanelId = (typeof PANEL_IDS)[number];
 const panelMeta = (id: PanelId) =>
   ({
     lancamentos: { title: t('Lançamentos', 'Transactions'), sub: t('Tudo o que você comprou, vendeu, aplicou e resgatou', 'Everything you bought, sold, invested and redeemed'), icon: 'list' },
     proventos: { title: t('Proventos', 'Dividends'), sub: t('Dividendos, JCP e rendimentos recebidos', 'Dividends, JCP and income received'), icon: 'coins' },
     ir: { title: t('Imposto de Renda', 'Income tax (IR)'), sub: t('Bens e direitos, DARFs e rendimentos — pronto para declarar', 'Bens e Direitos, DARFs and income — ready for your Brazilian tax return'), icon: 'receipt' },
+    simular: { title: t('E se…?', 'What if…?'), sub: t('Quanto você teria hoje se tivesse investido em qualquer ação do mundo', 'How much you’d have today if you had invested in any stock in the world'), icon: 'globe' },
     importar: { title: t('Importar & backup', 'Import & backup'), sub: t('Extratos da B3, planilhas e cópia de segurança', 'B3 statements, spreadsheets and backups'), icon: 'upload' },
     config: { title: t('Ajustes', 'Settings'), sub: t('Taxas, cotações, aparência e dados', 'Rates, quotes, appearance and data'), icon: 'settings' },
   })[id];
@@ -172,7 +174,7 @@ export function App() {
                     <div className="menu-sep" />
                   </>
                 )}
-                {(['lancamentos', 'proventos', 'ir'] as PanelId[]).map((id) => (
+                {(['lancamentos', 'proventos', 'ir', 'simular'] as PanelId[]).map((id) => (
                   <MenuItem key={id} icon={panelMeta(id).icon} title={panelMeta(id).title} sub={panelMeta(id).sub} onClick={() => open(id)} />
                 ))}
                 <MenuItem icon="upload" title={t('Importar', 'Import')} sub={t('B3, corretoras dos EUA e planilhas', 'B3, US brokers and spreadsheets')} onClick={() => open('importar')} warn={needsBackup} />
@@ -206,6 +208,7 @@ export function App() {
             {panel === 'lancamentos' && <Lancamentos onEdit={setForm} />}
             {panel === 'proventos' && <Proventos openAsset={setAssetId} />}
             {panel === 'ir' && <ImpostoRenda openAsset={setAssetId} />}
+            {panel === 'simular' && <Simular />}
             {panel === 'importar' && <Importar />}
             {panel === 'config' && <Configuracoes />}
           </div>

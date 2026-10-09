@@ -345,6 +345,9 @@ export async function aiReadDocument(text: string): Promise<{ ok: true; result: 
 export const SHARED_KEY = '__shared__';
 type Provider = 'finnhub' | 'brapi' | 'twelve';
 let shared: Record<Provider, boolean> = { finnhub: false, brapi: false, twelve: false };
+let yahoo = false;
+/** Yahoo Finance (stocks worldwide) through the "quotes" function, when it supports it. */
+export const yahooUrl = (u: string) => (yahoo ? u + (u.includes('?') ? '&' : '?') + '_k=' + SHARED_KEY : null);
 
 /** The user's own key, else the shared placeholder when the site provides one. */
 export function apiKey(s: { finnhubToken?: string; brapiToken?: string; twelveDataToken?: string }, p: Provider): string | undefined {
@@ -359,6 +362,7 @@ async function loadShared() {
     const { data, error } = await supabase.functions.invoke('quotes', { body: { check: true } });
     if (data && typeof data === 'object' && 'finnhub' in data) {
       shared = { finnhub: !!data.finnhub, brapi: !!data.brapi, twelve: !!data.twelve };
+      yahoo = !!data.yahoo;
       const on = (Object.keys(shared) as Provider[]).filter((k) => shared[k]);
       set({
         sharedKeys: on.join(','),
