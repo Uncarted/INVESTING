@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { actions, useData } from '../lib/store';
 import { allSales, computePositions, type Position } from '../lib/portfolio';
 import { computeTaxYear } from '../lib/tax';
@@ -13,7 +13,7 @@ import { Icon } from '../components/Icon';
 import { Logo, marketOf } from '../components/Logo';
 import { sampleData } from '../lib/sample';
 import { t } from '../lib/i18n';
-import { useCloud, userFirstName } from '../lib/cloud';
+import { marketMood, useCloud, userFirstName, type MarketMood } from '../lib/cloud';
 
 type SortKey = 'value' | 'result' | 'day' | 'name';
 type View = 'classe' | 'moeda' | 'ativo' | 'instituicao';
@@ -33,6 +33,7 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
   const live = useLive();
   const cloud = useCloud();
   const firstName = userFirstName(cloud.session);
+  const mood = useMarketMood(!!cloud.session);
   const tdy = today();
   const [filter, setFilter] = useState<Filter>(null);
   const [view, setView] = useState<View>('classe');
@@ -164,7 +165,7 @@ export function Home({ onAdd, open, openAsset }: { onAdd: () => void; open: (p: 
           </button>
         </div>
       )}
-      <div className="greeting">{greeting(firstName, dayChange, total)}</div>
+      <div className="greeting" key={mood?.line?.pt ?? 'local'}>{greeting(firstName, dayChange, total, mood)}</div>
       <section className="hero" style={{ paddingTop: 8 }}>
         <div className="reveal">
           <div className="eyebrow row" style={{ gap: 10 }}>
@@ -455,10 +456,53 @@ const LINES: Record<'quiet' | 'great' | 'good' | 'flat' | 'meh' | 'bad', Line[]>
   ],
 };
 
-/** A short, one-a-day line that depends on how the portfolio is doing today. */
-function greeting(name: string, dayChange: number, total: number) {
-  const p = total ? dayChange / (total - dayChange || total) : 0;
-  const mood = dayChange === 0 ? 'quiet' : p >= 0.015 ? 'great' : p > 0.003 ? 'good' : p >= -0.003 ? 'flat' : p > -0.015 ? 'meh' : 'bad';
+/** The market's mood today, refreshed every few hours (kept in the browser between visits). */
+const MOOD_KEY = 'wallet:mood';
+function useMarketMood(signedIn: boolean) {
+  const [mood, setMood] = useState<MarketMood | null>(() => {
+    try {
+      return (JSON.parse(localStorage.getItem(MOOD_KEY) ?? 'null') as { data: MarketMood } | null)?.data ?? null;
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    if (!signedIn) return;
+    try {
+      const c = JSON.parse(localStorage.getItem(MOOD_KEY) ?? 'null') as { at: number } | null;
+      if (c && Date.now() - c.at < 2 * 3600_000) return;
+    } catch {
+      /* refetch */
+    }
+    let alive = true;
+    marketMood().then((m) => {
+      if (!alive || !m?.markets.length) return;
+      setMood(m);
+      try {
+        localStorage.setItem(MOOD_KEY, JSON.stringify({ at: Date.now(), data: m }));
+      } catch {
+        /* storage full */
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [signedIn]);
+  return mood;
+}
+
+/**
+ * A short line about how the market is feeling: written by AI from today's Ibovespa, S&P 500,
+ * Bitcoin and dollar moves when available; otherwise one of our lines for the market's (or the
+ * portfolio's) mood, the same all day.
+ */
+function greeting(name: string, dayChange: number, total: number, market: MarketMood | null) {
+  if (market?.line) return <>{t(market.line.pt, market.line.en)}</>;
+  // Market mood: average day move of the stock indexes and Bitcoin (not the dollar).
+  const idx = market?.markets.filter((m) => !m.name.startsWith('D')) ?? [];
+  const p = idx.length ? idx.reduce((a, m) => a + m.day, 0) / idx.length / 100 : total ? dayChange / (total - dayChange || total) : 0;
+  const quiet = idx.length ? idx.every((m) => m.day === 0) : dayChange === 0;
+  const mood = quiet ? 'quiet' : p >= 0.015 ? 'great' : p > 0.003 ? 'good' : p >= -0.003 ? 'flat' : p > -0.015 ? 'meh' : 'bad';
   const list = LINES[mood];
   const [pt, en] = list[dayIndex() % list.length];
   const text = t(pt, en);

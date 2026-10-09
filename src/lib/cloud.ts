@@ -356,6 +356,21 @@ export function apiKey(s: { finnhubToken?: string; brapiToken?: string; twelveDa
 }
 export const usesSharedKey = (s: { finnhubToken?: string; brapiToken?: string; twelveDataToken?: string }, p: Provider) => apiKey(s, p) === SHARED_KEY;
 
+export interface MarketMood {
+  markets: { name: string; day: number; week: number }[];
+  line: { pt: string; en: string; mood?: string } | null;
+}
+/** How the market is feeling today (and an AI one-liner about it), from the "quotes" function. */
+export async function marketMood(): Promise<MarketMood | null> {
+  if (!supabase || !state.session) return null;
+  try {
+    const { data } = await supabase.functions.invoke('quotes', { body: { mood: true } });
+    return data && Array.isArray(data.markets) ? (data as MarketMood) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function loadShared() {
   if (!supabase || !state.session) return;
   try {
