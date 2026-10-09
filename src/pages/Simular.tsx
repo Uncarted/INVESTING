@@ -52,12 +52,14 @@ export function WhatIf() {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
-    const onDown = (e: MouseEvent) => box.current && !box.current.contains(e.target as Node) && close();
+    // Capture phase: picking a search result removes it from the page, so checking after React
+    // handled the click would wrongly look like a click outside.
+    const onDown = (e: PointerEvent) => box.current && !box.current.contains(e.target as Node) && close();
     window.addEventListener('keydown', onKey);
-    window.addEventListener('mousedown', onDown);
+    window.addEventListener('pointerdown', onDown, true);
     return () => {
       window.removeEventListener('keydown', onKey);
-      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('pointerdown', onDown, true);
     };
   }, [open]);
 
