@@ -748,13 +748,13 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .whatif-fab:active { transform: scale(0.96); }
 .whatif-fab.on { color: var(--text); }
 .whatif-fab.on span { display: none; }
-.whatif-card { width: 340px; max-width: calc(100vw - 32px); max-height: calc(100vh - 40px); overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 18px; background: color-mix(in srgb, var(--bg) 80%, transparent); backdrop-filter: blur(24px) saturate(1.2); -webkit-backdrop-filter: blur(24px) saturate(1.2); border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); box-shadow: 0 10px 30px rgba(0,0,0,0.12); transform-origin: left center; animation: wi-in 0.22s cubic-bezier(0.2,0.8,0.2,1) both; }
+.whatif-card { width: 320px; max-width: calc(100vw - 32px); max-height: calc(100vh - 40px); overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 16px; background: color-mix(in srgb, var(--bg) 72%, transparent); backdrop-filter: blur(20px) saturate(1.1); -webkit-backdrop-filter: blur(20px) saturate(1.1); border: 1px solid color-mix(in srgb, var(--border) 55%, transparent); box-shadow: none; transform-origin: left center; animation: wi-in 0.22s cubic-bezier(0.2,0.8,0.2,1) both; }
 .whatif-card.out { animation: wi-out 0.16s ease-in both; }
 @keyframes wi-in { from { opacity: 0; transform: translateX(-8px) scale(0.96); } }
 @keyframes wi-out { to { opacity: 0; transform: translateX(-6px) scale(0.97); } }
-.wi-title { font-family: 'Instrument Serif', serif; font-size: 20px; line-height: 1.1; }
-.wi-search { position: relative; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 11px; background: color-mix(in srgb, var(--surface-2) 45%, transparent); border: 1px solid color-mix(in srgb, var(--border) 60%, transparent); color: var(--muted); transition: border-color 0.2s, box-shadow 0.2s; }
-.wi-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.wi-title { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 500; }
+.wi-search { position: relative; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 2px; border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent); color: var(--muted); transition: border-color 0.2s; }
+.wi-search:focus-within { border-color: var(--accent); }
 .wi-search .avatar, .wi-search img { flex: none; }
 .wi-search input { flex: 1; min-width: 0; padding: 0; height: 100%; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: 13.5px; }
 .wi-search input::placeholder { color: var(--muted); }
@@ -770,18 +770,18 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .wi-quick button { height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text-2); font-size: 12px; font-weight: 550; cursor: pointer; transition: color 0.15s, border-color 0.15s; }
 .wi-quick button:hover { color: var(--text); border-color: var(--border-strong); }
 .wi-row { display: flex; gap: 8px; align-items: center; }
-.wi-amount { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border-radius: 10px; background: color-mix(in srgb, var(--surface-2) 45%, transparent); border: 1px solid color-mix(in srgb, var(--border) 60%, transparent); transition: border-color 0.2s; }
+.wi-amount { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 2px; border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent); transition: border-color 0.2s; }
 .wi-amount:focus-within { border-color: var(--accent); }
 .wi-amount i { font-style: normal; font-size: 12.5px; color: var(--muted); }
 .wi-amount input { flex: 1; min-width: 0; padding: 0; height: 100%; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: 14px; font-weight: 560; font-variant-numeric: tabular-nums; }
 .wi-cur { flex: none; }
-.wi-cur, .wi-periods { display: flex; padding: 3px; gap: 2px; border-radius: 999px; background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
+.wi-cur, .wi-periods { display: flex; gap: 2px; }
 .wi-cur button, .wi-periods button, .wi-date { border: 0; background: none; height: 26px; padding: 0 9px; border-radius: 999px; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 560; cursor: pointer; transition: background-color 0.2s, color 0.2s; white-space: nowrap; }
 .wi-periods { justify-content: space-between; }
 .wi-periods button { flex: 1; padding: 0 4px; }
-.wi-cur button.on, .wi-periods button.on, .wi-date.on { background: var(--text); color: var(--bg); }
+.wi-cur button.on, .wi-periods button.on, .wi-date.on { background: var(--accent-soft); color: var(--accent-text); }
 .wi-cur button:hover, .wi-periods button:hover, .wi-date:hover { color: var(--text); }
-.wi-cur button.on:hover, .wi-periods button.on:hover, .wi-date.on:hover { color: var(--bg); }
+.wi-cur button.on:hover, .wi-periods button.on:hover, .wi-date.on:hover { color: var(--accent-text); }
 .wi-date { position: relative; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
 .wi-date input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
 .wi-date input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
@@ -790,7 +790,7 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .wi-result.dim { opacity: 0.5; }
 .wi-lead { font-size: 11.5px; color: var(--muted); }
 .wi-big-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.wi-big { font-family: 'Instrument Serif', serif; font-size: 36px; line-height: 1.1; font-variant-numeric: tabular-nums; transition: color 0.3s; }
+.wi-big { font-family: 'Instrument Serif', serif; font-size: 32px; line-height: 1.1; font-variant-numeric: tabular-nums; transition: color 0.3s; }
 .wi-pct { font-size: 14px; font-weight: 640; font-variant-numeric: tabular-nums; }
 .wi-big.pos, .wi-pct.pos { color: var(--pos); }
 .wi-big.neg, .wi-pct.neg { color: var(--neg); }
