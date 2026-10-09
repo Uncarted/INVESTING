@@ -95,8 +95,9 @@ const MINOR: Record<string, string> = { GBp: 'GBP', GBX: 'GBP', ZAc: 'ZAR', ILA:
 
 async function yahooChart(symbol: string, from: number): Promise<Series | null> {
   const span = Date.now() - from;
-  const interval = span > 8 * 365 * DAY ? '1wk' : '1d';
-  const url = yahooUrl(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${Math.floor((from - 7 * DAY) / 1000)}&period2=${Math.floor(Date.now() / 1000)}&interval=${interval}&events=div%2Csplit`);
+  const interval = span <= 3 * DAY ? '5m' : span <= 9 * DAY ? '30m' : span > 8 * 365 * DAY ? '1wk' : '1d';
+  const intraday = interval.endsWith('m');
+  const url = yahooUrl(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${Math.floor((from - (intraday ? DAY : 7 * DAY)) / 1000)}&period2=${Math.floor(Date.now() / 1000)}&interval=${interval}&events=div%2Csplit`);
   if (!url) return null;
   const j = await getJSON(url);
   const r = j?.chart?.result?.[0];
@@ -111,7 +112,7 @@ async function yahooChart(symbol: string, from: number): Promise<Series | null> 
   r.timestamp.forEach((ts: number, i: number) => {
     const c = close[i];
     if (!(c && c > 0)) return;
-    const t = midday(ts * 1000);
+    const t = intraday ? ts * 1000 : midday(ts * 1000);
     bars.push({ t, close: c / div });
     const a = adjc?.[i];
     if (a && a > 0) adj.push({ t, close: a / div });
@@ -127,8 +128,7 @@ async function yahooChart(symbol: string, from: number): Promise<Series | null> 
   return { currency, bars, adj: adj.length === bars.length ? adj : undefined };
 }
 
-export async function loadSeries(h: Hit, fromISO: string, s: Settings): Promise<Series | null> {
-  const from = Date.parse(fromISO + 'T00:00:00');
+export async function loadSeries(h: Hit, from: number, s: Settings): Promise<Series | null> {
   if (h.src === 'yahoo') return yahooChart(h.symbol, from);
   const pad = new Date(from - 7 * DAY).toISOString().slice(0, 10);
   const fake = (cls: Asset['cls'], currency: 'BRL' | 'USD') => ({ id: 'sim', ticker: h.symbol, name: h.name, cls, currency }) as unknown as Asset;
@@ -138,10 +138,9 @@ export async function loadSeries(h: Hit, fromISO: string, s: Settings): Promise<
   return bars.length ? { currency: h.src === 'us' ? 'USD' : 'BRL', bars } : null;
 }
 
-/** BRL per unit of `cur`, daily since `fromISO`. */
-export async function fxToBRL(cur: string, fromISO: string): Promise<Bar[]> {
+/** BRL per unit of `cur` since `from` (ms). */
+export async function fxToBRL(cur: string, from: number): Promise<Bar[]> {
   if (cur === 'BRL') return [];
-  const from = Date.parse(fromISO + 'T00:00:00');
   if (yahooUrl('')) {
     try {
       const r = await yahooChart(`${cur}BRL=X`, from);

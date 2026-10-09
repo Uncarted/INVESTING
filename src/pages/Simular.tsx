@@ -9,49 +9,91 @@ import { Logo } from '../components/Logo';
 import { LineChart } from '../components/charts';
 import { CountUp } from '../components/motion';
 
-/** "E se eu tivesse investido…": pick any stock/coin, a date and an amount; see what it'd be worth today. */
+/**
+ * "E se…?": a small button in the bottom-left corner that opens a compact card —
+ * pick any stock/coin, a period and an amount; see what it'd be worth today.
+ */
 
-const QUICK = ['AAPL', 'NVDA', 'PETR4', 'BTC', 'MSFT', 'VALE3', 'TSLA', 'ITUB4', 'ETH', 'WEGE3'];
-const AGO: { y: number; label: () => string }[] = [
-  { y: 1, label: () => t('1 ano', '1 year') },
-  { y: 3, label: () => t('3 anos', '3 years') },
-  { y: 5, label: () => t('5 anos', '5 years') },
-  { y: 10, label: () => t('10 anos', '10 years') },
-];
-const yearsAgo = (y: number) => {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - y);
-  return toISODate(d);
-};
+const QUICK = ['AAPL', 'NVDA', 'PETR4', 'BTC', 'TSLA', 'VALE3'];
+type Period = '1D' | '1W' | '1M' | '6M' | '1Y' | '5Y' | '10Y' | 'DATE';
+const PERIODS: Exclude<Period, 'DATE'>[] = ['1D', '1W', '1M', '6M', '1Y', '5Y', '10Y'];
+const periodLabel = (p: Period) =>
+  ({ '1D': '1D', '1W': t('1S', '1W'), '1M': '1M', '6M': '6M', '1Y': t('1A', '1Y'), '5Y': t('5A', '5Y'), '10Y': t('10A', '10Y'), DATE: '' })[p];
 const DAY = 86400000;
+function startOf(p: Period, date: string) {
+  if (p === 'DATE') return Date.parse(date + 'T12:00:00');
+  const d = new Date();
+  if (p === '1D') return d.getTime() - DAY;
+  if (p === '1W') return d.getTime() - 7 * DAY;
+  if (p === '1M') d.setMonth(d.getMonth() - 1);
+  else if (p === '6M') d.setMonth(d.getMonth() - 6);
+  else d.setFullYear(d.getFullYear() - (p === '1Y' ? 1 : p === '5Y' ? 5 : 10));
+  return Date.parse(toISODate(d) + 'T12:00:00');
+}
 /** "1.000" / "1,000.50" / "1000,5" → number, by the language's separators. */
 const parseAmount = (s: string) => {
   const en = locale() === 'en-US';
   const n = Number(s.replace(en ? /,/g : /\./g, '').replace(',', '.').replace(/[^\d.]/g, ''));
   return n > 0 ? n : 0;
 };
+const logoCls = (h: Hit) => (h.market === 'CRYPTO' ? 'CRIPTO' : h.market === 'B3' ? 'ACAO' : 'EXTERIOR');
 
-export function Simular() {
+export function WhatIf() {
+  const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const close = () => {
+    setClosing(true);
+    setTimeout(() => {
+      setOpen(false);
+      setClosing(false);
+    }, 160);
+  };
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    const onDown = (e: MouseEvent) => box.current && !box.current.contains(e.target as Node) && close();
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="whatif" ref={box}>
+      {open && <WhatIfCard closing={closing} />}
+      <button className={'whatif-fab' + (open ? ' on' : '')} onClick={() => (open ? close() : setOpen(true))} aria-label={t('E se…?', 'What if…?')}>
+        <Icon name={open ? 'x' : 'chart'} size={17} />
+        <span>{t('E se eu tivesse investido…?', 'What if I had invested…?')}</span>
+      </button>
+    </div>
+  );
+}
+
+function WhatIfCard({ closing }: { closing: boolean }) {
   const data = useData();
   const [hit, setHit] = useState<Hit | null>(null);
-  const [date, setDate] = useState(() => yearsAgo(5));
-  const [amountText, setAmountText] = useState('1.000');
+  const [period, setPeriod] = useState<Period>('1Y');
+  const [date, setDate] = useState(() => toISODate(new Date(Date.now() - 365 * DAY)));
+  const [amountText, setAmountText] = useState(() => (1000).toLocaleString(locale()));
   const amount = parseAmount(amountText);
   const [inBRL, setInBRL] = useState(true);
-  const [reinvest, setReinvest] = useState(true);
   const [series, setSeries] = useState<Series | null>(null);
   const [fx, setFx] = useState<{ t: number; close: number }[]>([]);
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'empty'>('idle');
+  const start = useMemo(() => startOf(period, date), [period, date]);
 
   useEffect(() => {
     if (!hit) return;
     let alive = true;
     setStatus('loading');
     (async () => {
-      const s = await loadSeries(hit, date, data.settings).catch(() => null);
+      const s = await loadSeries(hit, start, data.settings).catch(() => null);
       if (!alive) return;
       if (!s?.bars.length) return setStatus('empty');
-      const f = s.currency === 'BRL' ? [] : await fxToBRL(s.currency, date).catch(() => []);
+      const f = s.currency === 'BRL' ? [] : await fxToBRL(s.currency, start).catch(() => []);
       if (!alive) return;
       setSeries(s);
       setFx(f);
@@ -62,147 +104,112 @@ export function Simular() {
     };
     // Settings only matter for the API keys; don't refetch on every price tick.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hit, date]);
+  }, [hit, start]);
 
   const native = series?.currency ?? 'BRL';
-  const showBRL = inBRL || native === 'BRL' || !fx.length;
-  const cur = showBRL ? 'BRL' : native;
+  const cur = inBRL || native === 'BRL' || !fx.length ? 'BRL' : native;
   const fmt = (v: number) => fmtCurrency(v, cur, { always: true });
+  const intraday = period === '1D' || period === '1W';
 
   const result = useMemo(() => {
     if (!series || status !== 'done' || amount <= 0) return null;
-    const start = Date.parse(date + 'T12:00:00');
-    const src = reinvest && series.adj ? series.adj : series.bars;
-    const conv = (b: { t: number; close: number }) => b.close * (cur === 'BRL' && native !== 'BRL' ? at(fx, b.t) ?? 0 : 1);
-    let i0 = src.findIndex((b) => b.t >= start - DAY / 2);
-    if (i0 < 0) i0 = src.length - 1;
-    const p0 = conv(src[i0]);
+    // Dividends reinvested when the source has adjusted prices (total return).
+    const src = series.adj ?? series.bars;
+    const rate = (tm: number) => (cur === 'BRL' && native !== 'BRL' ? at(fx, tm) ?? 0 : 1);
+    let i0 = src.findIndex((b) => b.t >= start - (intraday ? 0 : DAY / 2));
+    if (i0 < 0) i0 = Math.max(0, src.length - 2);
+    const p0 = src[i0].close * rate(src[i0].t);
     if (!(p0 > 0)) return null;
     const units = amount / p0;
-    const points = src.slice(i0).map((b) => ({ t: b.t, v: units * conv(b), b: amount }));
+    const points = src.slice(i0).map((b) => ({ t: b.t, v: units * b.close * rate(b.t), b: amount }));
     const now = points[points.length - 1].v;
-    let best = points[0];
-    let peak = points[0].v;
-    let dd = 0;
-    for (const p of points) {
-      if (p.v > best.v) best = p;
-      peak = Math.max(peak, p.v);
-      dd = Math.min(dd, p.v / peak - 1);
-    }
     const days = (points[points.length - 1].t - points[0].t) / DAY;
-    const pct = now / amount - 1;
-    const yearly = days > 360 ? Math.pow(now / amount, 365 / days) - 1 : null;
-    const raw = series.bars;
     return {
       bought: src[i0].t,
-      priceThen: raw[Math.min(i0, raw.length - 1)].close,
-      priceNow: raw[raw.length - 1].close,
-      units: amount / (raw[Math.min(i0, raw.length - 1)].close * (cur === 'BRL' && native !== 'BRL' ? at(fx, src[i0].t) ?? 1 : 1)),
+      priceThen: series.bars[i0]?.close ?? 0,
+      priceNow: series.bars[series.bars.length - 1].close,
       points,
       now,
       gain: now - amount,
-      pct,
-      yearly,
-      best,
-      dd,
-      nativePct: raw[raw.length - 1].close / raw[Math.min(i0, raw.length - 1)].close - 1,
+      pct: now / amount - 1,
+      yearly: days > 420 ? Math.pow(now / amount, 365 / days) - 1 : null,
     };
-  }, [series, status, amount, date, reinvest, cur, native, fx]);
+  }, [series, status, amount, start, cur, native, fx, intraday]);
 
   const tone = !result ? 'flat' : result.gain > 0.005 ? 'pos' : result.gain < -0.005 ? 'neg' : 'flat';
   const compact = useMemo(() => new Intl.NumberFormat(locale(), { style: 'currency', currency: cur, notation: 'compact', maximumFractionDigits: 1 }), [cur]);
+  const pctStr = (v: number) => (v >= 0 ? '+' : '') + (v * 100).toLocaleString(locale(), { maximumFractionDigits: Math.abs(v) > 9.99 ? 0 : 1 }) + '%';
+  const sym = cur === 'BRL' ? 'R$' : cur === 'USD' ? 'US$' : cur === 'EUR' ? '€' : cur;
 
   return (
-    <div className="sim stack">
-      <div className="card card-pad stack sim-inputs">
-        <StockSearch hit={hit} onPick={setHit} />
-        {!hit && (
-          <div className="chips sim-quick">
-            {QUICK.map((s) => (
-              <button key={s} className="chip-btn" onClick={() => setHit(quickHit(s))}>{s}</button>
-            ))}
+    <div className={'whatif-card' + (closing ? ' out' : '')} role="dialog" aria-label={t('E se…?', 'What if…?')}>
+      <div className="wi-title">{t('E se eu tivesse investido…', 'What if I had invested…')}</div>
+      <StockSearch hit={hit} onPick={setHit} />
+      {!hit && (
+        <div className="wi-quick">
+          {QUICK.map((s) => (
+            <button key={s} onClick={() => setHit(quickHit(s))}>{s}</button>
+          ))}
+        </div>
+      )}
+
+      <div className="wi-row">
+        <label className="wi-amount">
+          <i>{sym}</i>
+          <input inputMode="decimal" value={amountText} onChange={(e) => setAmountText(e.target.value)} onBlur={() => amount > 0 && setAmountText(amount.toLocaleString(locale(), { maximumFractionDigits: 2 }))} aria-label={t('Quanto', 'Amount')} />
+        </label>
+        {native !== 'BRL' && fx.length > 0 && (
+          <div className="wi-cur">
+            <button className={cur === 'BRL' ? 'on' : ''} onClick={() => setInBRL(true)}>R$</button>
+            <button className={cur !== 'BRL' ? 'on' : ''} onClick={() => setInBRL(false)}>{native}</button>
           </div>
         )}
-        <div className="sim-row">
-          <label className="field">
-            <span>{t('Quanto', 'Amount')}</span>
-            <div className="sim-amount">
-              <i>{cur === 'BRL' ? 'R$' : cur === 'USD' ? 'US$' : cur === 'EUR' ? '€' : cur}</i>
-              <input className="input" inputMode="decimal" value={amountText} onChange={(e) => setAmountText(e.target.value)} onBlur={() => amount > 0 && setAmountText(amount.toLocaleString(locale(), { maximumFractionDigits: 2 }))} />
-            </div>
-          </label>
-          <label className="field">
-            <span>{t('Quando', 'When')}</span>
-            <input className="input" type="date" value={date} max={toISODate(new Date(Date.now() - DAY))} min="1990-01-01" onChange={(e) => e.target.value && setDate(e.target.value)} />
-          </label>
-        </div>
-        <div className="sim-row wrap">
-          <div className="seg">
-            {AGO.map((a) => (
-              <button key={a.y} className={date === yearsAgo(a.y) ? 'on' : ''} onClick={() => setDate(yearsAgo(a.y))}>{a.label()}</button>
-            ))}
-          </div>
-          {native !== 'BRL' && fx.length > 0 && (
-            <div className="seg">
-              <button className={inBRL ? 'on' : ''} onClick={() => setInBRL(true)}>R$</button>
-              <button className={!inBRL ? 'on' : ''} onClick={() => setInBRL(false)}>{native}</button>
-            </div>
-          )}
-          {series?.adj && (
-            <label className="sim-toggle">
-              <input type="checkbox" checked={reinvest} onChange={(e) => setReinvest(e.target.checked)} />
-              <span>{t('Reinvestindo dividendos', 'Dividends reinvested')}</span>
-            </label>
-          )}
-        </div>
       </div>
 
-      {hit && status === 'loading' && !result && (
-        <div className="card card-pad sim-wait"><span className="spinner" /> {t('Buscando o histórico…', 'Fetching history…')}</div>
-      )}
-      {hit && status === 'empty' && (
-        <div className="card card-pad muted">{t('Não achei histórico de preço para esse ativo nesse período. Tente outra data ou outro ticker.', "Couldn't find price history for that asset in this period. Try another date or ticker.")}</div>
-      )}
+      <div className="wi-periods">
+        {PERIODS.map((p) => (
+          <button key={p} className={period === p ? 'on' : ''} onClick={() => setPeriod(p)}>{periodLabel(p)}</button>
+        ))}
+        <label className={'wi-date' + (period === 'DATE' ? ' on' : '')} title={t('Escolher data', 'Pick a date')}>
+          {period === 'DATE' ? fmtDate(date) : <CalendarGlyph />}
+          <input type="date" value={date} min="1990-01-01" max={toISODate(new Date(Date.now() - DAY))} onChange={(e) => { if (e.target.value) { setDate(e.target.value); setPeriod('DATE'); } }} />
+        </label>
+      </div>
+
+      {hit && status === 'loading' && !result && <div className="wi-wait"><span className="spinner sm" /> {t('Buscando o histórico…', 'Fetching history…')}</div>}
+      {hit && status === 'empty' && <div className="wi-wait">{t('Sem histórico para esse período. Tente outro.', 'No history for that period. Try another.')}</div>}
 
       {hit && result && (
-        <div className={'card card-pad sim-result reveal' + (status === 'loading' ? ' dim' : '')} key={hit.symbol}>
-          <div className="sim-lead">
-            {t('Se você tivesse investido', 'If you had invested')} <b>{fmt(amount)}</b> {t('em', 'in')} <b>{hit.ticker}</b> {t('em', 'on')} <b>{fmtDate(toISODate(new Date(result.bought)))}</b>, {t('hoje teria', "today you'd have")}
+        <div className={'wi-result' + (status === 'loading' ? ' dim' : '')}>
+          <div className="wi-lead">
+            {fmtDate(toISODate(new Date(result.bought)))} → {t('hoje', 'today')}
           </div>
-          <div className={'sim-big ' + tone}>
-            <CountUp value={result.now} format={fmt} />
+          <div className="wi-big-row">
+            <div className={'wi-big ' + tone}><CountUp value={result.now} format={fmt} /></div>
+            <div className={'wi-pct ' + tone}>{pctStr(result.pct)}</div>
           </div>
-          <div className={'sim-gain ' + tone}>
-            {result.gain >= 0 ? '+' : '−'}{fmt(Math.abs(result.gain))}
-            <span>{(result.pct >= 0 ? '+' : '') + (result.pct * 100).toLocaleString(locale(), { maximumFractionDigits: result.pct > 9.99 ? 0 : 1 })}%</span>
-            {result.yearly !== null && <em>{(result.yearly * 100).toLocaleString(locale(), { maximumFractionDigits: 1 })}% {t('ao ano', 'a year')}</em>}
+          <div className="wi-sub">
+            <span className={tone}>{result.gain >= 0 ? '+' : '−'}{fmt(Math.abs(result.gain))}</span>
+            {result.yearly !== null && <span> · {pctStr(result.yearly)} {t('ao ano', 'a year')}</span>}
           </div>
-
           <LineChart
             points={result.points}
             tone={tone}
-            height={200}
+            height={96}
+            axis={false}
+            mode={period === '1D' ? 'intraday' : period === '1W' ? 'hourly' : 'daily'}
             format={(v) => compact.format(v)}
-            animKey={hit.symbol + date + cur + reinvest}
+            animKey={hit.symbol + start + cur}
             tip={(p) => (
               <>
                 <b>{fmt(p.v)}</b>
-                <div className="ltip-sub"><span className={p.v >= amount ? 'pos' : 'neg'}>{(p.v / amount - 1 >= 0 ? '+' : '') + ((p.v / amount - 1) * 100).toFixed(1)}%</span></div>
+                <div className="ltip-sub"><span className={p.v >= amount ? 'pos' : 'neg'}>{pctStr(p.v / amount - 1)}</span></div>
               </>
             )}
           />
-
-          <div className="sim-stats">
-            <Stat label={t('Preço na época', 'Price then')} value={fmtCurrency(result.priceThen, native, { always: true })} />
-            <Stat label={t('Preço hoje', 'Price now')} value={fmtCurrency(result.priceNow, native, { always: true })} sub={native !== 'BRL' ? `${result.nativePct >= 0 ? '+' : ''}${(result.nativePct * 100).toFixed(1)}% ${t('em', 'in')} ${native}` : undefined} />
-            <Stat label={hit.market === 'CRYPTO' ? t('Unidades', 'Units') : t('Cotas compradas', 'Shares bought')} value={result.units.toLocaleString(locale(), { maximumFractionDigits: result.units < 10 ? 4 : 1 })} />
-            <Stat label={t('Melhor momento', 'Best moment')} value={fmt(result.best.v)} sub={fmtDate(toISODate(new Date(result.best.t)))} />
-            <Stat label={t('Maior queda', 'Worst drop')} value={`${(result.dd * 100).toFixed(1)}%`} tone={result.dd < -0.0005 ? 'neg' : undefined} sub={t('do topo ao fundo', 'peak to trough')} />
-          </div>
-          <div className="pchart-note">
-            {hit.name} · {hit.exch}
-            {native !== 'BRL' && cur === 'BRL' ? ` · ${t('convertido pelo câmbio de cada dia', 'converted at each day’s exchange rate')}` : ''}
-            {reinvest && series?.adj ? ` · ${t('com dividendos reinvestidos', 'with dividends reinvested')}` : ''}. {t('Simulação, sem impostos e taxas.', 'Simulation, before taxes and fees.')}
+          <div className="wi-foot">
+            <span>{fmtCurrency(result.priceThen, native, { always: true })} → {fmtCurrency(result.priceNow, native, { always: true })}</span>
+            <span>{series?.adj ? t('c/ dividendos', 'incl. dividends') : hit.exch}</span>
           </div>
         </div>
       )}
@@ -210,15 +217,12 @@ export function Simular() {
   );
 }
 
-function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: string }) {
-  return (
-    <div className="sim-stat">
-      <span>{label}</span>
-      <b className={tone}>{value}</b>
-      {sub && <small>{sub}</small>}
-    </div>
-  );
-}
+const CalendarGlyph = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="5" width="18" height="16" rx="3" />
+    <path d="M3 10h18M8 3v4M16 3v4" />
+  </svg>
+);
 
 function StockSearch({ hit, onPick }: { hit: Hit | null; onPick: (h: Hit) => void }) {
   const [q, setQ] = useState('');
@@ -254,40 +258,32 @@ function StockSearch({ hit, onPick }: { hit: Hit | null; onPick: (h: Hit) => voi
   };
 
   return (
-    <div className="field combo">
-      <div className="search-big">
-        {hit && !q ? (
-          <span className="sim-picked"><Logo symbol={hit.ticker} market={hit.market} cls={hit.market === 'CRYPTO' ? 'CRIPTO' : hit.market === 'B3' ? 'ACAO' : 'EXTERIOR'} size={28} /></span>
-        ) : (
-          <Icon name="search" size={18} />
-        )}
-        <input
-          ref={input}
-          className="input"
-          value={q}
-          placeholder={hit ? `${hit.ticker} — ${hit.name}` : t('Qualquer ação do mundo — Apple, Toyota, PETR4, Bitcoin…', 'Any stock in the world — Apple, Toyota, PETR4, Bitcoin…')}
-          onChange={(e) => { setQ(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, list.length - 1)); }
-            if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
-            if (e.key === 'Enter' && list[active]) { e.preventDefault(); choose(list[active]); }
-            if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); }
-          }}
-        />
-        {busy && <span className="spinner" />}
-      </div>
+    <div className="wi-search">
+      {hit && !q ? <Logo symbol={hit.ticker} market={hit.market} cls={logoCls(hit)} size={22} /> : <Icon name="search" size={15} />}
+      <input
+        ref={input}
+        autoFocus={!hit}
+        className={hit && !q ? 'picked' : ''}
+        value={q}
+        placeholder={hit ? `${hit.ticker} · ${hit.name}` : t('Qualquer ação do mundo…', 'Any stock in the world…')}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, list.length - 1)); }
+          if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
+          if (e.key === 'Enter' && list[active]) { e.preventDefault(); choose(list[active]); }
+          if (e.key === 'Escape' && open && list.length) { e.stopPropagation(); setOpen(false); }
+        }}
+      />
+      {busy && <span className="spinner sm" />}
       {open && list.length > 0 && (
-        <div className="combo-list big">
+        <div className="wi-list">
           {list.map((h, i) => (
-            <div key={h.symbol + i} className={'combo-item' + (i === active ? ' on' : '')} onMouseDown={() => choose(h)} onMouseEnter={() => setActive(i)}>
-              <Logo symbol={h.ticker} market={h.market} cls={h.market === 'CRYPTO' ? 'CRIPTO' : h.market === 'B3' ? 'ACAO' : 'EXTERIOR'} size={30} />
-              <span className="ci-text">
-                <b>{h.ticker}</b>
-                <span>{h.name}</span>
-              </span>
-              <span className="chip">{h.exch}</span>
+            <div key={h.symbol + i} className={'wi-item' + (i === active ? ' on' : '')} onMouseDown={() => choose(h)} onMouseEnter={() => setActive(i)}>
+              <Logo symbol={h.ticker} market={h.market} cls={logoCls(h)} size={24} />
+              <span className="wi-item-text"><b>{h.ticker}</b><span>{h.name}</span></span>
+              <small>{h.exch}</small>
             </div>
           ))}
         </div>
