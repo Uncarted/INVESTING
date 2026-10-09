@@ -128,6 +128,7 @@ function WhatIfCard({ closing }: { closing: boolean }) {
     const now = points[points.length - 1].v;
     const days = (points[points.length - 1].t - points[0].t) / DAY;
     return {
+      i0,
       bought: src[i0].t,
       priceThen: series.bars[i0]?.close ?? 0,
       priceNow: series.bars[series.bars.length - 1].close,
@@ -214,9 +215,10 @@ function WhatIfCard({ closing }: { closing: boolean }) {
             mode={period === '1D' ? 'intraday' : period === '1W' ? 'hourly' : 'daily'}
             format={(v) => compact.format(v)}
             animKey={hit.symbol + start + cur}
-            tip={(p) => (
+            tip={(p, i) => (
               <>
                 <b>{fmt(p.v)}</b>
+                {series?.bars[result.i0 + i] && <div className="ltip-sub">{hit.ticker} {fmtCurrency(series.bars[result.i0 + i].close, native, { always: true })}</div>}
                 <div className="ltip-sub"><span className={p.v >= amount ? 'pos' : 'neg'}>{pctStr(p.v / amount - 1)}</span></div>
                 {!intraday && <div className="ltip-sub">{t('Clique para começar aqui', 'Click to start here')}</div>}
               </>
