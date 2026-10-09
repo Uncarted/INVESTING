@@ -138,9 +138,10 @@ a { color: var(--accent-text); }
 .wordmark { display: inline-flex; align-items: baseline; }
 /* Upside-down "i": the stem hangs from the top, the (lime) dot sits on the baseline like a period. */
 /* The original "Wallet." with the font's own "ı" standing on the lime dot. */
-.wm-i { white-space: nowrap; }
-.wm-i .g { display: inline-block; transform: translateY(-0.2em); }
-.wm-i i { display: inline-block; margin-left: -0.235em; }
+.wm-i { position: relative; display: inline-block; margin-left: 0.02em; }
+.wm-i i { position: absolute; left: 50%; bottom: 0; transform: translateX(calc(-50% + 0.01em)) scale(1.15); transform-origin: 50% 85%; }
+.wordmark.wm-wait { opacity: 0; }
+.wordmark.wm-ready { transition: opacity 0.25s ease; }
 .pill-btn {
   display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px 0 14px; border-radius: 999px;
   border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; transition: transform 0.1s, filter 0.15s;
