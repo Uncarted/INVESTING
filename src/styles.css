@@ -806,3 +806,4 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
   .whatif-card { position: fixed; left: 16px; right: 16px; top: 50%; translate: 0 -50%; width: auto; max-width: none; z-index: 41; }
 }
 @media (prefers-reduced-motion: reduce) { .whatif-card, .whatif-card.out, .wi-result, .whatif-fab::after { animation: none; } }
+.wi-chart.pickable { cursor: pointer; }

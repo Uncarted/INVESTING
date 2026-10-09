@@ -85,6 +85,7 @@ function WhatIfCard({ closing }: { closing: boolean }) {
   const [series, setSeries] = useState<Series | null>(null);
   const [fx, setFx] = useState<{ t: number; close: number }[]>([]);
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'empty'>('idle');
+  const hoverIdx = useRef<number | null>(null);
   const start = useMemo(() => startOf(period, date), [period, date]);
 
   useEffect(() => {
@@ -194,8 +195,19 @@ function WhatIfCard({ closing }: { closing: boolean }) {
             <span className={tone}>{result.gain >= 0 ? '+' : '−'}{fmt(Math.abs(result.gain))}</span>
             {result.yearly !== null && <span> · {pctStr(result.yearly)} {t('ao ano', 'a year')}</span>}
           </div>
+          <div
+            className={'wi-chart' + (intraday ? '' : ' pickable')}
+            onClick={() => {
+              // Click a day on the chart to start the simulation there.
+              const i = hoverIdx.current;
+              if (intraday || i === null || i <= 0) return;
+              setDate(toISODate(new Date(result.points[i].t)));
+              setPeriod('DATE');
+            }}
+          >
           <LineChart
             points={result.points}
+            onHover={(i) => { if (i !== null) hoverIdx.current = i; }}
             tone={tone}
             height={96}
             axis={false}
@@ -206,9 +218,11 @@ function WhatIfCard({ closing }: { closing: boolean }) {
               <>
                 <b>{fmt(p.v)}</b>
                 <div className="ltip-sub"><span className={p.v >= amount ? 'pos' : 'neg'}>{pctStr(p.v / amount - 1)}</span></div>
+                {!intraday && <div className="ltip-sub">{t('Clique para começar aqui', 'Click to start here')}</div>}
               </>
             )}
           />
+          </div>
           <div className="wi-foot">
             <span>{fmtCurrency(result.priceThen, native, { always: true })} → {fmtCurrency(result.priceNow, native, { always: true })}</span>
             <span>{series?.adj ? t('c/ dividendos', 'incl. dividends') : hit.exch}</span>
