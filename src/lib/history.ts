@@ -2,7 +2,7 @@ import { apiKey } from './cloud';
 import { useEffect, useMemo, useState } from 'react';
 import type { Asset, Settings, Transaction } from './types';
 import { isMarketClass } from './types';
-import { computePositions, currencyOf, sortTx } from './portfolio';
+import { computePositions, currencyOf, sortTx, type Position } from './portfolio';
 import { toISODate, today } from './format';
 
 /**
@@ -301,4 +301,68 @@ export function useAssetSeries(asset: Asset | undefined, range: Range, settings:
     return last.t >= now - (grain === 'daily' ? 0 : 60000) ? [...bars.slice(0, -1), { t: last.t, close: asset.currentPrice }] : [...bars, { t: now, close: asset.currentPrice }];
   }, [bars, asset?.currentPrice, grain]);
   return { bars: withLive, loading: bars === null, intraday: grain !== 'daily' };
+}
+
+/**
+ * Today's chart: the portfolio's value through the day (last 24 hours), from each holding's
+ * intraday prices. Holdings without intraday data stay flat at their current value.
+ */
+export function useIntradayHistory(positions: Position[], settings: Settings, enabled: boolean) {
+  const live = positions.filter((p) => !p.closed && p.quantity > 0 && isMarketClass(p.asset.cls) && p.asset.cls !== 'CAIXA');
+  const ids = live.map((p) => p.asset.id + p.asset.ticker).join();
+  const [bars, setBars] = useState<Map<string, Bar[]>>(new Map());
+  const [loading, setLoading] = useState(false);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    const id = window.setInterval(() => setTick((n) => n + 1), 120000);
+    return () => clearInterval(id);
+  }, [enabled]);
+  useEffect(() => {
+    if (!enabled || !live.length) return;
+    let alive = true;
+    setLoading(true);
+    const from = rangeStart('1D');
+    Promise.all(live.map((p) => priceSeries(p.asset, from, 'intraday', settings).then((b) => [p.asset.id, b] as const))).then((all) => {
+      if (!alive) return;
+      setBars(new Map(all));
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, ids, tick]);
+
+  const points = useMemo(() => {
+    if (!enabled) return [];
+    const now = Date.now();
+    const since = now - DAY;
+    let start = now;
+    for (const b of bars.values()) for (const x of b) if (x.t >= since) { start = Math.min(start, x.t); break; }
+    if (start >= now - 10 * 60000) return [];
+    const total = positions.reduce((s, p) => s + p.value, 0);
+    const step = 5 * 60000;
+    const out: { t: number; v: number }[] = [];
+    for (let t = start; t < now; t += step) {
+      let v = total;
+      for (const p of live) {
+        const b = bars.get(p.asset.id);
+        const price = p.quantity ? p.valueNative / p.quantity : 0;
+        if (!b?.length || !(price > 0)) continue;
+        // Before its first trade of the day a holding sits at yesterday's close.
+        const then = t < b[0].t ? undefined : at(b, t);
+        // Ignore data that doesn't match today's price (wrong currency or symbol).
+        const last = b[b.length - 1].close;
+        if (!(last / price > 0.7 && last / price < 1.4)) continue;
+        const past = then !== undefined ? p.value * (then / price) : p.value - p.dayChange;
+        v += past - p.value;
+      }
+      out.push({ t, v });
+    }
+    out.push({ t: now, v: total });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, bars, positions]);
+  return { points, loading };
 }

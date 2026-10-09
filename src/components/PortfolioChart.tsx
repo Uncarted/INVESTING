@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { Asset, Settings, Transaction } from '../lib/types';
 import type { Position } from '../lib/portfolio';
-import { usePortfolioHistory, type Range } from '../lib/history';
+import { useIntradayHistory, usePortfolioHistory, type Range } from '../lib/history';
 import { LineChart } from './charts';
 import { money, moneyCompact, signedPercent } from '../lib/format';
 import { t } from '../lib/i18n';
@@ -50,6 +50,7 @@ export function PortfolioChart({
 }) {
   const now = useMemo(() => ({ value: total, invested: cost }), [total, cost]);
   const { points, loading, missing } = usePortfolioHistory(range, assets, txs, settings, now);
+  const day = useIntradayHistory(positions, settings, range === '1D');
 
   let gain = 0;
   let pct = 0;
@@ -80,11 +81,32 @@ export function PortfolioChart({
           </div>
         </div>
         <div className="spacer" />
-        {loading && range !== '1D' && <span className="spinner sm" title={t('Carregando histórico…', 'Loading history…')} />}
+        {(range === '1D' ? day.loading && !day.points.length : loading) && <span className="spinner sm" title={t('Carregando histórico…', 'Loading history…')} />}
       </div>
 
       {range === '1D' ? (
-        <Movers positions={positions} openAsset={openAsset} />
+        day.points.length > 2 ? (
+          <>
+            <LineChart
+              points={day.points}
+              tone={tn}
+              height={190}
+              mode="intraday"
+              format={(v) => moneyCompact(v)}
+              animKey="1D"
+              refLine={{ v: total - dayChange, label: t('Ontem', 'Yesterday') }}
+              tip={(p) => (
+                <>
+                  <b>{money(p.v)}</b>
+                  <div className="ltip-sub"><span className={tone(p.v - (total - dayChange))}>{signed(p.v - (total - dayChange))}</span> {t('no dia', 'today')}</div>
+                </>
+              )}
+            />
+            <Movers positions={positions} openAsset={openAsset} compact />
+          </>
+        ) : (
+          <Movers positions={positions} openAsset={openAsset} />
+        )
       ) : (
         <LineChart
           points={points.map((p) => ({ t: p.t, v: p.value, b: p.invested }))}
@@ -125,16 +147,17 @@ export function PortfolioChart({
 }
 
 /** Today: which holdings moved the portfolio, as diverging bars. */
-function Movers({ positions, openAsset }: { positions: Position[]; openAsset: (id: string) => void }) {
+function Movers({ positions, openAsset, compact }: { positions: Position[]; openAsset: (id: string) => void; compact?: boolean }) {
   const list = positions
     .filter((p) => Math.abs(p.dayChange) > 0.005)
     .sort((a, b) => Math.abs(b.dayChange) - Math.abs(a.dayChange))
-    .slice(0, 6);
+    .slice(0, compact ? 3 : 6);
+  if (compact && !list.length) return null;
   const max = Math.max(1, ...list.map((p) => Math.abs(p.dayChange)));
   if (!list.length)
     return <div className="movers-empty muted small">{t('Nenhuma variação hoje ainda — mercado fechado ou cotações desligadas.', 'No moves yet today — market closed or live quotes off.')}</div>;
   return (
-    <div className="movers">
+    <div className={'movers' + (compact ? ' compact' : '')}>
       {list.map((p, i) => {
         const w = (Math.abs(p.dayChange) / max) * 50;
         const up = p.dayChange >= 0;
