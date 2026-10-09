@@ -386,3 +386,31 @@ describe('dólar digital (DolarApp / USDc)', () => {
     expect(currencyOf({ id: 'x', ticker: 'USDC', cls: 'CRIPTO', currency: 'USD', createdAt: '' })).toBe('BRL');
   });
 });
+
+describe('B3 posição', () => {
+  it('confere quantidades: ajusta, adiciona e zera', async () => {
+    const { buildPreview, materialize } = await import('./importers');
+    const bbas = asset('p1', 'BBAS3', 'ACAO');
+    const itsa = asset('p2', 'ITSA4', 'ACAO');
+    const old = asset('p3', 'MXRF11', 'FII');
+    const txs = [tx('p1', 'BUY', '2024-01-10', 1000, 30), tx('p2', 'BUY', '2024-01-10', 100, 10), tx('p3', 'BUY', '2024-01-10', 50, 10)];
+    const rows = [
+      { Produto: 'BBAS3 - BANCO DO BRASIL S/A', 'Instituição': 'XP INVESTIMENTOS CCTVM S/A', 'Código de Negociação': 'BBAS3', Quantidade: 2000, 'Preço de Fechamento': 15 },
+      { Produto: 'ITSA4 - ITAUSA S.A.', 'Instituição': 'XP INVESTIMENTOS CCTVM S/A', 'Código de Negociação': 'ITSA4', Quantidade: 100, 'Preço de Fechamento': 11 },
+      { Produto: 'WEGE3 - WEG S.A.', 'Instituição': 'XP INVESTIMENTOS CCTVM S/A', 'Código de Negociação': 'WEGE3', Quantidade: 10, 'Preço de Fechamento': 40 },
+    ];
+    const p = buildPreview(rows, { assets: [bbas, itsa, old], transactions: txs });
+    expect(p.format).toBe('posicao');
+    expect(p.rows.map((r) => [r.ticker, r.tx.type, r.tx.factor ?? r.tx.quantity])).toEqual([
+      ['BBAS3', 'SPLIT', 2],
+      ['WEGE3', 'BUY', 10],
+      ['MXRF11', 'SPLIT', 0],
+    ]);
+    const { txs: added } = materialize(p.rows, [bbas, itsa, old]);
+    const all = [...txs, ...added.map((x, i) => ({ ...x, id: 'n' + i, createdAt: '2025-01-01' }))];
+    const b = runMarket(bbas, all.filter((x) => x.assetId === 'p1'));
+    expect(b.quantity).toBe(2000);
+    expect(b.cost).toBe(30000); // average price 15
+    expect(runMarket(old, all.filter((x) => x.assetId === 'p3')).quantity).toBe(0);
+  });
+});

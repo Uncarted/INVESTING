@@ -158,8 +158,8 @@ export function Importar() {
                     <td className="text-2">{fmtDate(r.tx.date)}</td>
                     <td>{r.balanceOnly ? t('Atualiza saldo', 'Balance update') : r.cls === 'CAIXA' ? (r.tx.type === 'BUY' ? t('Entrada', 'Deposit') : t('Saída', 'Withdrawal')) : isMarketClass(r.cls) ? TX_LABEL[r.tx.type] : r.tx.type === 'BUY' ? t('Aplicação', 'Deposit') : t('Resgate', 'Redemption')}</td>
                     <td><div className="row"><span className="ticker">{r.ticker}</span><ClassChip cls={r.cls} /></div></td>
-                    <td className="num">{r.cls !== 'CAIXA' && isMarketClass(r.cls) && (r.tx.quantity !== 1 || r.tx.type === 'BUY' || r.tx.type === 'SELL') ? qty(r.tx.quantity) : ''}</td>
-                    <td className="num">{r.cls === 'CAIXA' ? fmtCurrency(r.tx.quantity, 'USD', { always: true }) : fmtCurrency(r.tx.price, r.cls === 'EXTERIOR' ? 'USD' : 'BRL', { always: true })}</td>
+                    <td className="num">{r.tx.type !== 'SPLIT' && r.cls !== 'CAIXA' && isMarketClass(r.cls) && (r.tx.quantity !== 1 || r.tx.type === 'BUY' || r.tx.type === 'SELL') ? qty(r.tx.quantity) : ''}</td>
+                    <td className="num">{r.tx.type === 'SPLIT' ? '' : r.cls === 'CAIXA' ? fmtCurrency(r.tx.quantity, 'USD', { always: true }) : fmtCurrency(r.tx.price, r.cls === 'EXTERIOR' ? 'USD' : 'BRL', { always: true })}</td>
                     <td className="text-2">{r.tx.institution}</td>
                     <td className="small" style={{ color: 'var(--warn-ink)' }}>{r.duplicate ? t('já importado', 'already imported') : r.warning}</td>
                   </tr>
@@ -196,8 +196,10 @@ export function Importar() {
             <li>{t('Entre na', 'Log in to the')} <b>Área do Investidor</b> {t('da B3 (investidor.b3.com.br) com seu gov.br.', 'at B3 (investidor.b3.com.br) with your gov.br account.')}</li>
             <li>{t('Vá em', 'Go to')} <b>Extratos → Negociação</b>{t(', escolha o período e baixe em Excel. Isso traz suas compras e vendas de ações, FIIs, ETFs e BDRs.', ', pick the period and download as Excel. It has your buys and sells of stocks, REITs, ETFs and BDRs.')}</li>
             <li>{t('Em', 'In')} <b>Extratos → Movimentação</b>{t(', baixe também: traz dividendos, JCP, rendimentos, desdobramentos, bonificações e Tesouro Direto.', ', download that too: it has dividends, JCP, income, splits, bonus shares and Tesouro Direto.')}</li>
-            <li>{t('Arraste os dois arquivos aqui (um de cada vez). Linhas já importadas são detectadas.', 'Drop both files here (one at a time). Rows already imported are detected.')}</li>
+            <li>{t('Arraste os arquivos aqui (um de cada vez, em qualquer ordem). Linhas já importadas são detectadas.', 'Drop the files here (one at a time, any order). Rows already imported are detected.')}</li>
+            <li>{t('Por último, baixe', 'Last, download')} <b>{t('Extratos → Posição', 'Statements → Position')}</b>{t(' e importe também: ela confere suas quantidades e corrige o que os extratos não mostram — desdobramentos, bonificações, portabilidade entre corretoras e ativos que você já não tem.', " and import it too: it checks your quantities and fixes what the statements miss — splits, bonus shares, transfers between brokers and assets you no longer hold.")}</li>
           </ol>
+          <p className="muted small">{t('A B3 leva 1 a 2 dias úteis para mostrar as operações: o que você fez hoje ou ontem pode ainda não estar nos extratos.', 'B3 takes 1–2 business days to show trades: what you did today or yesterday may not be in the statements yet.')}</p>
           <p className="muted small">{t('A B3 não informa corretagem nem taxas; se quiser que entrem no preço médio, edite o lançamento depois. CDBs, LCIs e fundos de banco não passam pela B3: adicione pelo formulário.', "B3 doesn't include brokerage fees; edit the transaction later if you want them in the average price. Bank CDBs, LCIs and funds don't go through B3: add them with the form.")}</p>
         </div>
         <div className="stack">

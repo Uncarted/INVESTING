@@ -99,7 +99,13 @@ export function runMarket(asset: Asset, txs: Transaction[], until?: string, sett
         st.cost += t.quantity * t.price * fx;
         break;
       case 'SPLIT':
-        if (t.factor && t.factor > 0) st.quantity *= t.factor;
+        // factor 0: position adjusted to zero (e.g. not in the B3 position anymore).
+        if (t.factor !== undefined && t.factor >= 0) st.quantity *= t.factor;
+        if (st.quantity <= EPS) {
+          st.quantity = 0;
+          st.cost = 0;
+          st.costNative = 0;
+        }
         break;
       case 'SELL': {
         const avg = st.quantity > EPS ? st.cost / st.quantity : 0;

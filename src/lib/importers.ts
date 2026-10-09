@@ -3,7 +3,7 @@ import type { Asset, AssetClass, FixedIncomeInfo, Transaction, TxType } from './
 import { CLASS_LABEL, isMarketClass } from './types';
 import { guessClass, normalizeTicker } from './classify';
 import { groupTx, runMarket } from './portfolio';
-import { parseDate, parseNumber } from './format';
+import { parseDate, parseNumber, toISODate } from './format';
 import { newAsset } from './store';
 import { t } from './i18n';
 
@@ -58,8 +58,11 @@ export const bankName = (s: string) => BANKS.find(([re]) => re.test(s))?.[1] ?? 
 export async function readSheet(file: File): Promise<Row[]> {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array', cellDates: true, raw: false });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json<Row>(ws, { defval: '', raw: true });
+  const first = XLSX.utils.sheet_to_json<Row>(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: true });
+  // B3 "Posição" has one sheet per kind of asset (Ações, BDR, ETF, Fundos, Tesouro…): read them all.
+  if (detect(first) === 'posicao' && wb.SheetNames.length > 1)
+    return wb.SheetNames.flatMap((n, i) => (i === 0 ? first : XLSX.utils.sheet_to_json<Row>(wb.Sheets[n], { defval: '', raw: true })));
+  return first;
 }
 
 const norm = (s: string) =>
@@ -89,10 +92,11 @@ const US_COLS = {
 };
 const hasAny = (keys: Set<string>, names: string[]) => names.some((n) => keys.has(n));
 
-function detect(rows: Row[]): 'negociacao' | 'movimentacao' | 'template' | 'us-broker' | 'bank' | null {
+function detect(rows: Row[]): 'negociacao' | 'movimentacao' | 'posicao' | 'template' | 'us-broker' | 'bank' | null {
   if (!rows.length) return null;
   const keys = new Set(Object.keys(rows[0]).map(norm));
   if (keys.has('codigodenegociacao') && keys.has('tipodemovimentacao')) return 'negociacao';
+  if (keys.has('codigodenegociacao') && keys.has('quantidade') && keys.has('produto') && !keys.has('entradasaida')) return 'posicao';
   if (keys.has('entradasaida') && keys.has('movimentacao') && keys.has('produto')) return 'movimentacao';
   if (keys.has('data') && keys.has('tipo') && keys.has('ativo') && keys.has('classe')) return 'template';
   if (hasAny(keys, US_COLS.date) && hasAny(keys, US_COLS.symbol) && hasAny(keys, US_COLS.action) && (hasAny(keys, US_COLS.qty) || hasAny(keys, US_COLS.amount)))
@@ -254,6 +258,8 @@ export function buildPreview(rows: Row[], existing: { assets: Asset[]; transacti
         warning,
       });
     }
+  } else if (format === 'posicao') {
+    return { format, rows: posicaoRows(rows, existing), skipped };
   } else if (format === 'template') {
     const k = keyer('csv');
     const typeMap: Record<string, TxType> = {
@@ -917,11 +923,87 @@ export const FORMAT_LABEL = (): Record<string, string> => ({
   'usd-cash': t('Saldo em dólar na conta (PDF)', 'Dollar account balance (PDF)'),
   negociacao: 'B3 — Negociação',
   movimentacao: 'B3 — Movimentação',
+  posicao: t('B3 — Posição (confere as quantidades)', 'B3 — Position (checks your quantities)'),
   template: t('Planilha modelo', 'Template spreadsheet'),
   'us-broker': t('Corretora dos EUA (Nomad, Avenue…)', 'US broker (Nomad, Avenue…)'),
   bank: t('Extrato do banco — caixinhas e aplicações', 'Bank statement — savings boxes and deposits'),
   desconhecido: t('Formato não reconhecido', 'Unrecognized format'),
 });
+
+const B3_CLASSES = new Set<AssetClass>(['ACAO', 'FII', 'ETF', 'BDR']);
+
+/**
+ * B3 "Posição": what you actually hold today, across all brokers. Compares it with the portfolio and
+ * proposes adjustments where they differ — splits, bonus shares, transfers between brokers or sales
+ * that never showed up in the statements. Adjustments keep the total cost (only the quantity changes);
+ * shares the portfolio doesn't know about come in at the closing price, to be corrected if needed.
+ */
+function posicaoRows(rows: Row[], existing: { assets: Asset[]; transactions: Transaction[] }): PreviewRow[] {
+  const held = new Map<string, { q: number; close: number; name?: string; inst: Set<string> }>();
+  for (const r of rows) {
+    const g = getter(r);
+    const code = String(g('Código de Negociação') ?? '').trim();
+    const q = parseNumber(g('Quantidade'));
+    if (!code || !/^[A-Z]{4}\d{1,2}F?$/i.test(code) || !Number.isFinite(q)) continue;
+    const ticker = normalizeTicker(code);
+    const h = held.get(ticker) ?? { q: 0, close: 0, inst: new Set<string>() };
+    h.q += q;
+    h.close = parseNumber(g('Preço de Fechamento')) || h.close;
+    h.name ??= String(g('Produto') ?? '').split(' - ').slice(1).join(' - ').trim() || undefined;
+    const inst = prettyInstitution(String(g('Instituição') ?? ''));
+    if (inst) h.inst.add(inst);
+    held.set(ticker, h);
+  }
+  // Compare with what the portfolio had at the end of yesterday (B3's position lags a day).
+  const day = new Date();
+  const date = toISODate(day);
+  day.setDate(day.getDate() - 1);
+  const until = toISODate(day);
+  const byAsset = groupTx(existing.transactions);
+  const mine = new Map<string, { asset: Asset; q: number }>();
+  for (const a of existing.assets) {
+    if (!B3_CLASSES.has(a.cls) || (a.currency && a.currency !== 'BRL')) continue;
+    mine.set(a.ticker.toUpperCase(), { asset: a, q: runMarket(a, byAsset.get(a.id) ?? [], until).quantity });
+  }
+  const k = keyer('b3p');
+  const out: PreviewRow[] = [];
+  const note = t('Ajuste pela posição da B3', 'Adjusted to the B3 position');
+  const fmtQ = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
+  for (const [ticker, h] of held) {
+    const m = mine.get(ticker);
+    const have = m?.q ?? 0;
+    if (Math.abs(have - h.q) < 1e-6) continue;
+    const inst = [...h.inst].join(', ') || undefined;
+    if (have > 1e-9) {
+      const key = k([date, ticker, 'ajuste', h.q]);
+      out.push({
+        key, ticker, cls: m!.asset.cls,
+        tx: { type: 'SPLIT', date, quantity: 0, price: 0, fees: 0, factor: h.q / have, institution: inst, source: 'b3', importKey: key, notes: `${note}: ${fmtQ(have)} → ${fmtQ(h.q)}` },
+        duplicate: existing.transactions.some((x) => x.importKey === key),
+        warning: t(`Você tinha ${fmtQ(have)}, a B3 mostra ${fmtQ(h.q)} — ajusta a quantidade e mantém o custo total`, `You had ${fmtQ(have)}, B3 shows ${fmtQ(h.q)} — fixes the quantity, keeps the total cost`),
+      });
+    } else {
+      const key = k([date, ticker, 'entrada', h.q]);
+      out.push({
+        key, ticker, name: h.name, cls: m?.asset.cls ?? guessClass(ticker) ?? 'ACAO',
+        tx: { type: 'BUY', date, quantity: h.q, price: h.close, fees: 0, institution: inst, source: 'b3', importKey: key, notes: note },
+        duplicate: existing.transactions.some((x) => x.importKey === key),
+        warning: t('Não estava na carteira — entra pelo preço de hoje; ajuste o preço médio se souber', "Wasn't in your portfolio — comes in at today's price; fix the average price if you know it"),
+      });
+    }
+  }
+  for (const [ticker, m] of mine) {
+    if (held.has(ticker) || m.q <= 1e-9) continue;
+    const key = k([date, ticker, 'zerado']);
+    out.push({
+      key, ticker, cls: m.asset.cls,
+      tx: { type: 'SPLIT', date, quantity: 0, price: 0, fees: 0, factor: 0, source: 'b3', importKey: key, notes: `${note}: ${fmtQ(m.q)} → 0` },
+      duplicate: existing.transactions.some((x) => x.importKey === key),
+      warning: t(`Não aparece na B3 (vendido ou transferido?) — zera as ${fmtQ(m.q)} ações. Se vendeu, prefira lançar a venda (conta pro IR).`, `Not at B3 (sold or transferred?) — sets the ${fmtQ(m.q)} shares to zero. If you sold, add the sale instead (it counts for taxes).`),
+    });
+  }
+  return out;
+}
 
 /** Turns selected preview rows into transactions + any new assets needed. */
 export function materialize(rows: PreviewRow[], assets: Asset[]) {
