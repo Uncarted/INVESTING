@@ -740,7 +740,7 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 /* What-if ("E se…?"): corner button + compact card */
 .whatif { position: fixed; left: 20px; top: 0; bottom: 0; pointer-events: none; z-index: 40; display: flex; flex-direction: row-reverse; align-items: center; gap: 12px; }
 .whatif > * { pointer-events: auto; }
-.whatif-fab { position: relative; flex: none; display: inline-flex; align-items: center; gap: 0; height: 42px; padding: 0 12px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border-strong)); background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: var(--accent); cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.18); transition: gap 0.28s cubic-bezier(0.2,0.8,0.2,1), padding 0.28s cubic-bezier(0.2,0.8,0.2,1), color 0.2s, transform 0.15s, border-color 0.2s; }
+.whatif-fab { position: relative; flex: none; display: inline-flex; align-items: center; gap: 0; height: 42px; padding: 0 12px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border-strong)); background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: var(--accent); cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.1); transition: gap 0.28s cubic-bezier(0.2,0.8,0.2,1), padding 0.28s cubic-bezier(0.2,0.8,0.2,1), color 0.2s, transform 0.15s, border-color 0.2s; }
 .whatif-fab svg { flex: none; }
 .whatif-fab span { max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0; font-size: 13px; font-weight: 550; transition: max-width 0.32s cubic-bezier(0.2,0.8,0.2,1), opacity 0.2s; }
 .whatif-fab:hover, .whatif-fab:focus-visible { color: var(--text); gap: 8px; padding: 0 16px 0 14px; border-color: var(--accent); }
@@ -748,12 +748,12 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .whatif-fab:active { transform: scale(0.96); }
 .whatif-fab.on { color: var(--text); }
 .whatif-fab.on span { display: none; }
-.whatif-card { width: 340px; max-width: calc(100vw - 32px); max-height: calc(100vh - 40px); overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 18px; background: var(--surface); border: 1px solid var(--border-strong); box-shadow: 0 18px 50px rgba(0,0,0,0.35); transform-origin: left center; animation: wi-in 0.22s cubic-bezier(0.2,0.8,0.2,1) both; }
+.whatif-card { width: 340px; max-width: calc(100vw - 32px); max-height: calc(100vh - 40px); overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 18px; background: color-mix(in srgb, var(--bg) 80%, transparent); backdrop-filter: blur(24px) saturate(1.2); -webkit-backdrop-filter: blur(24px) saturate(1.2); border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); box-shadow: 0 10px 30px rgba(0,0,0,0.12); transform-origin: left center; animation: wi-in 0.22s cubic-bezier(0.2,0.8,0.2,1) both; }
 .whatif-card.out { animation: wi-out 0.16s ease-in both; }
 @keyframes wi-in { from { opacity: 0; transform: translateX(-8px) scale(0.96); } }
 @keyframes wi-out { to { opacity: 0; transform: translateX(-6px) scale(0.97); } }
 .wi-title { font-family: 'Instrument Serif', serif; font-size: 20px; line-height: 1.1; }
-.wi-search { position: relative; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 11px; background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); transition: border-color 0.2s, box-shadow 0.2s; }
+.wi-search { position: relative; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 11px; background: color-mix(in srgb, var(--surface-2) 45%, transparent); border: 1px solid color-mix(in srgb, var(--border) 60%, transparent); color: var(--muted); transition: border-color 0.2s, box-shadow 0.2s; }
 .wi-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .wi-search .avatar, .wi-search img { flex: none; }
 .wi-search input { flex: 1; min-width: 0; padding: 0; height: 100%; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: 13.5px; }
@@ -770,12 +770,12 @@ input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent);
 .wi-quick button { height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text-2); font-size: 12px; font-weight: 550; cursor: pointer; transition: color 0.15s, border-color 0.15s; }
 .wi-quick button:hover { color: var(--text); border-color: var(--border-strong); }
 .wi-row { display: flex; gap: 8px; align-items: center; }
-.wi-amount { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); transition: border-color 0.2s; }
+.wi-amount { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border-radius: 10px; background: color-mix(in srgb, var(--surface-2) 45%, transparent); border: 1px solid color-mix(in srgb, var(--border) 60%, transparent); transition: border-color 0.2s; }
 .wi-amount:focus-within { border-color: var(--accent); }
 .wi-amount i { font-style: normal; font-size: 12.5px; color: var(--muted); }
 .wi-amount input { flex: 1; min-width: 0; padding: 0; height: 100%; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: 14px; font-weight: 560; font-variant-numeric: tabular-nums; }
 .wi-cur { flex: none; }
-.wi-cur, .wi-periods { display: flex; padding: 3px; gap: 2px; border-radius: 999px; background: var(--surface-2); }
+.wi-cur, .wi-periods { display: flex; padding: 3px; gap: 2px; border-radius: 999px; background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
 .wi-cur button, .wi-periods button, .wi-date { border: 0; background: none; height: 26px; padding: 0 9px; border-radius: 999px; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 560; cursor: pointer; transition: background-color 0.2s, color 0.2s; white-space: nowrap; }
 .wi-periods { justify-content: space-between; }
 .wi-periods button { flex: 1; padding: 0 4px; }
