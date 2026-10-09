@@ -66,7 +66,7 @@ export function WhatIf() {
       {open && <WhatIfCard closing={closing} />}
       <button className={'whatif-fab' + (open ? ' on' : '')} onClick={() => (open ? close() : setOpen(true))} aria-label={t('E se…?', 'What if…?')}>
         <Icon name={open ? 'x' : 'chart'} size={17} />
-        <span>{t('E se eu tivesse investido…?', 'What if I had invested…?')}</span>
+        <span>{t('E se…?', 'What if…?')}</span>
       </button>
     </div>
   );
@@ -143,7 +143,7 @@ function WhatIfCard({ closing }: { closing: boolean }) {
 
   return (
     <div className={'whatif-card' + (closing ? ' out' : '')} role="dialog" aria-label={t('E se…?', 'What if…?')}>
-      <div className="wi-title">{t('E se eu tivesse investido…', 'What if I had invested…')}</div>
+      <div className="wi-title">{t('E se…?', 'What if…?')}</div>
       <StockSearch hit={hit} onPick={setHit} />
       {!hit && (
         <div className="wi-quick">
