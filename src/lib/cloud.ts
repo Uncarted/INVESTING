@@ -174,6 +174,8 @@ export async function signOut() {
 
 function translate(msg: string) {
   const m = msg.toLowerCase();
+  if (m.includes('failed to fetch') || m.includes('networkerror') || m.includes('load failed'))
+    return t('Não foi possível falar com o servidor. Confira sua internet; se estiver tudo certo, o servidor pode estar pausado — tente de novo em alguns minutos.', "Couldn't reach the server. Check your connection; if it's fine, the server may be paused — try again in a few minutes.");
   if (m.includes('invalid login')) return t('Email ou senha incorretos.', 'Wrong email or password.');
   if (m.includes('email not confirmed')) return t('Confirme seu email antes de entrar (veja sua caixa de entrada).', 'Confirm your email before signing in (check your inbox).');
   if (m.includes('already registered')) return t('Esse email já tem conta — use “Entrar”.', 'This email already has an account — use “Sign in”.');
